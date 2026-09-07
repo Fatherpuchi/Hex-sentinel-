@@ -449,8 +449,36 @@ def stage2_risk_gate(status, signal, ai_assessment):
 # STAGE 4.1 — AGENT TOOL REGISTRY
 # ============================================================
 
-def analyze_market():
-    """Run the Sentinel market-analysis pipeline."""
+def analyze_market(symbol=None):
+    """Analyze a requested Binance symbol using the full validation engine."""
+    if symbol:
+        symbol = symbol.upper()
+        if not symbol.endswith("USDT"):
+            symbol += "USDT"
+
+        result = deep_validate_symbol(symbol)
+
+        if result.get("status") == "ERROR":
+            return result
+
+        risk_status = "CAUTION" if result.get("status") == "APPROVED" else "BLOCKED"
+
+        if result.get("status") != "APPROVED":
+            final_action = "BLOCKED"
+        elif result.get("signal") == "BUY":
+            final_action = "PAPER_BUY"
+        elif result.get("signal") == "SELL":
+            final_action = "PAPER_SELL"
+        else:
+            final_action = "PAPER_HOLD"
+
+        return {
+            **result,
+            "risk_status": risk_status,
+            "final_action": final_action,
+            "live_execution": "BLOCKED"
+        }
+
     return {
         "symbol": agent_state["market"]["symbol"],
         "signal": agent_state["market"]["signal"],
@@ -501,7 +529,7 @@ agent_tools = {
 # STAGE 4.2 — AGENT TOOL EXECUTION
 # ============================================================
 
-def execute_tool(tool_name):
+def execute_tool(tool_name, *args):
     """Safely execute a registered Sentinel agent tool."""
 
     if tool_name not in agent_tools:
@@ -511,7 +539,7 @@ def execute_tool(tool_name):
         }
 
     try:
-        result = agent_tools[tool_name]()
+        result = agent_tools[tool_name](*args)
         return {
             "success": True,
             "tool": tool_name,
@@ -608,6 +636,17 @@ Return ONLY the tool name.
                     "success": False,
                     "error": "AI selected an invalid or unsafe tool."
                 }
+
+        # Pass a requested crypto symbol to the market-analysis tool.
+        if routed_tool == "analyze_market":
+            symbol_match = re.search(
+                r"\b(?:analyze|analysis|market)\s+([A-Za-z0-9]{2,20})\b",
+                user_request,
+                re.IGNORECASE,
+            )
+            if symbol_match:
+                requested = symbol_match.group(1).upper()
+                return execute_tool("analyze_market", requested)
 
         return execute_tool(routed_tool)
 

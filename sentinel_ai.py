@@ -449,6 +449,40 @@ def stage2_risk_gate(status, signal, ai_assessment):
 # STAGE 4.1 — AGENT TOOL REGISTRY
 # ============================================================
 
+def get_current_price(symbol):
+    """Fetch the latest public Binance spot price."""
+    response = requests.get(
+        f"{BINANCE_API}/api/v3/ticker/price",
+        params={"symbol": symbol},
+        timeout=10,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return float(data["price"])
+
+
+def get_market_snapshot(symbol="BTCUSDT"):
+    """Return current public Binance market price."""
+    symbol = symbol.upper()
+    if not symbol.endswith("USDT"):
+        symbol += "USDT"
+
+    try:
+        current_price = get_current_price(symbol)
+        return {
+            "symbol": symbol,
+            "current_price": current_price,
+            "data": "LIVE_BINANCE_SPOT",
+            "live_execution": "BLOCKED"
+        }
+    except Exception as e:
+        return {
+            "symbol": symbol,
+            "error": str(e),
+            "live_execution": "BLOCKED"
+        }
+
+
 def analyze_market(symbol=None):
     """Analyze a requested Binance symbol using the full validation engine."""
     if symbol:
@@ -460,6 +494,12 @@ def analyze_market(symbol=None):
 
         if result.get("status") == "ERROR":
             return result
+
+        try:
+            current_price = get_current_price(symbol)
+        except Exception as e:
+            current_price = None
+            result["price_error"] = str(e)
 
         risk_status = "CAUTION" if result.get("status") == "APPROVED" else "BLOCKED"
 
@@ -474,6 +514,7 @@ def analyze_market(symbol=None):
 
         return {
             **result,
+            "current_price": current_price,
             "risk_status": risk_status,
             "final_action": final_action,
             "live_execution": "BLOCKED"
@@ -521,6 +562,7 @@ def get_agent_status():
 
 agent_tools = {
     "analyze_market": analyze_market,
+    "get_market_snapshot": get_market_snapshot,
     "get_decision_history": get_decision_history,
     "get_agent_status": get_agent_status
 }
@@ -629,15 +671,31 @@ Return ONLY the tool name.
                 routed_tool = "get_agent_status"
             elif any(word in request_lower for word in ["history", "decisions", "recent"]):
                 routed_tool = "get_decision_history"
-            elif any(word in request_lower for word in ["analyze", "analysis", "market"]):
+            elif any(word in request_lower for word in ["analyze", "analysis"]):
                 routed_tool = "analyze_market"
+            elif any(word in request_lower for word in ["market", "price"]):
+                routed_tool = "get_market_snapshot"
             else:
                 return {
                     "success": False,
                     "error": "AI selected an invalid or unsafe tool."
                 }
 
+        # Deterministic routing for the bare market command.
+        if user_request.strip().lower() in ["market", "price"]:
+            return execute_tool("get_market_snapshot")
+
         # Pass a requested crypto symbol to the market-analysis tool.
+        if routed_tool == "get_market_snapshot":
+            symbol_match = re.search(
+                r"\b(?:market|price)\s+([A-Za-z0-9]{2,20})\b",
+                user_request,
+                re.IGNORECASE,
+            )
+            if symbol_match:
+                requested = symbol_match.group(1).upper()
+                return execute_tool("get_market_snapshot", requested)
+
         if routed_tool == "analyze_market":
             symbol_match = re.search(
                 r"\b(?:analyze|analysis|market)\s+([A-Za-z0-9]{2,20})\b",
@@ -661,6 +719,72 @@ Return ONLY the tool name.
 # STAGE 6 — SENTINEL INTERACTIVE DEMO
 # ============================================================
 
+def market_menu():
+    """Interactive Binance-wide bullish/bearish candidate scanner."""
+
+    print("\n📊 MARKET SCANNER")
+    print("1. 🟢 Bullish Candidates")
+    print("2. 🔴 Bearish Candidates")
+    print("3. Exit")
+
+    choice = input("\nChoose: ").strip()
+
+    if choice == "3":
+        return
+
+    if choice not in ["1", "2"]:
+        print("⚠️ Invalid choice.")
+        return
+
+    print("\n🔎 Scanning Binance spot market...")
+    scan = scan_binance()
+
+    candidates = scan["top_buys"] if choice == "1" else scan["top_sells"]
+    label = "BULLISH" if choice == "1" else "BEARISH"
+
+    print(f"\n{'🟢' if choice == '1' else '🔴'} {label} CANDIDATES")
+    print(f"Universe: {scan['universe']} | Scanned: {scan['scanned']}")
+
+    for i, item in enumerate(candidates, 1):
+        print(
+            f"{i}. {item['symbol']} | "
+            f"RSI {item['rsi']:.2f} | "
+            f"Trend {item['trend_strength']:.2f}%"
+        )
+
+    if not candidates:
+        print("⚠️ No candidates found.")
+        return
+
+    selection = input("\nSelect coin number (or Enter to return): ").strip()
+
+    if not selection:
+        return
+
+    try:
+        index = int(selection) - 1
+        if index < 0 or index >= len(candidates):
+            print("⚠️ Invalid coin selection.")
+            return
+    except ValueError:
+        print("⚠️ Enter a valid coin number.")
+        return
+
+    symbol = candidates[index]["symbol"]
+
+    print(f"\n🔬 Deep-validating {symbol}...")
+
+    result = analyze_market(symbol)
+
+    print("\n🤖 Tool: analyze_market")
+    print("📊 Result:", result)
+
+    if isinstance(result, dict) and result.get("current_price") is not None:
+        print(f"💰 Current price: ${result['current_price']:,.2f}")
+
+    print("🔒 Live execution: BLOCKED")
+
+
 def demo_interface():
     """Interactive terminal interface for the Sentinel agent."""
 
@@ -671,7 +795,7 @@ def demo_interface():
     print("Live execution: BLOCKED")
     print("\nAvailable commands:")
     print("  status   → Current Sentinel safety state")
-    print("  market   → Current validated market analysis")
+    print("  market   → Scan bullish/bearish Binance candidates")
     print("  history  → Recent audited decisions")
     print("  analyze  → Analyze the current market")
     print("  quit     → Exit demo")
@@ -687,11 +811,20 @@ def demo_interface():
             if not user_request:
                 continue
 
+            # Deterministic interactive market scanner.
+            if user_request.lower() == "market":
+                market_menu()
+                continue
+
             router_result = route_user_request(user_request)
 
             if router_result["success"]:
                 print("\n🤖 Tool:", router_result["tool"])
                 print("📊 Result:", router_result["result"])
+
+                result_data = router_result["result"]
+                if isinstance(result_data, dict) and result_data.get("current_price") is not None:
+                    print(f"💰 Current price: ${result_data['current_price']:,.2f}")
             else:
                 print("\n⚠️ Request blocked:", router_result["error"])
 

@@ -719,17 +719,171 @@ Return ONLY the tool name.
 # STAGE 6 — SENTINEL INTERACTIVE DEMO
 # ============================================================
 
+def search_binance_crypto(query):
+    """Search Binance USDT spot symbols by name or symbol."""
+
+    query = query.strip().lower()
+    if not query:
+        return []
+
+    try:
+        response = requests.get(
+            f"{BINANCE_API}/api/v3/exchangeInfo",
+            timeout=10
+        )
+        response.raise_for_status()
+        symbols = response.json().get("symbols", [])
+
+        coin_response = requests.get(
+            "https://api.coingecko.com/api/v3/coins/list",
+            timeout=10
+        )
+        coin_response.raise_for_status()
+        coins = coin_response.json()
+
+    except Exception as e:
+        print(f"⚠️ Crypto search error: {e}")
+        return []
+
+    # Binance is the source of truth for tradable assets.
+    binance_assets = {}
+
+    for item in symbols:
+        if (
+            item.get("status") != "TRADING"
+            or item.get("quoteAsset") != "USDT"
+            or item.get("isSpotTradingAllowed") is not True
+        ):
+            continue
+
+        symbol = item.get("symbol", "")
+        base_asset = item.get("baseAsset", "")
+
+        if base_asset.endswith(("UP", "DOWN", "BULL", "BEAR")):
+            continue
+
+        binance_assets[base_asset.upper()] = symbol
+
+    results = {}
+
+    # Direct Binance symbol/base-asset matching.
+    for base_asset, symbol in binance_assets.items():
+        if query in base_asset.lower() or query in symbol.lower():
+            results[symbol] = {
+                "symbol": symbol,
+                "base_asset": base_asset,
+                "name": base_asset
+            }
+
+    # CoinGecko name/symbol matching.
+    for coin in coins:
+        name = coin.get("name", "")
+        coin_symbol = coin.get("symbol", "").upper()
+
+        if not name or not coin_symbol:
+            continue
+
+        if query in name.lower() or query in coin_symbol.lower():
+            symbol = binance_assets.get(coin_symbol)
+
+            if symbol:
+                candidate = {
+                    "symbol": symbol,
+                    "base_asset": coin_symbol,
+                    "name": name
+                }
+
+                existing = results.get(symbol)
+
+                if existing is None:
+                    results[symbol] = candidate
+                else:
+                    # Prefer exact name matches over symbol collisions.
+                    existing_exact = existing["name"].lower() == query
+                    candidate_exact = name.lower() == query
+
+                    if candidate_exact and not existing_exact:
+                        results[symbol] = candidate
+
+    # Rank exact/strong matches first.
+    ranked = list(results.values())
+
+    def score(item):
+        name = item["name"].lower()
+        base = item["base_asset"].lower()
+        symbol = item["symbol"].lower()
+
+        if name == query:
+            return 0
+        if base == query:
+            return 1
+        if symbol == query:
+            return 2
+        if name.startswith(query):
+            return 3
+        if base.startswith(query):
+            return 4
+        return 5
+
+    ranked.sort(key=lambda x: (score(x), x["name"].lower()))
+
+    return ranked[:20]
+
 def market_menu():
     """Interactive Binance-wide bullish/bearish candidate scanner."""
 
     print("\n📊 MARKET SCANNER")
     print("1. 🟢 Bullish Candidates")
     print("2. 🔴 Bearish Candidates")
-    print("3. Exit")
+    print("3. 🔎 Search Crypto")
+    print("4. Exit")
 
     choice = input("\nChoose: ").strip()
 
+    if choice == "4":
+        return
+
     if choice == "3":
+        query = input("\nSearch crypto: ").strip()
+
+        results = search_binance_crypto(query)
+
+        if not results:
+            print("⚠️ No matching Binance USDT spot symbols found.")
+            return
+
+        print("\n🔎 SEARCH RESULTS")
+
+        for i, item in enumerate(results, 1):
+            print(f"{i}. {item['symbol']} — {item['name']}")
+
+        selection = input("\nSelect coin number (or Enter to return): ").strip()
+
+        if not selection:
+            return
+
+        try:
+            index = int(selection) - 1
+            if index < 0 or index >= len(results):
+                print("⚠️ Invalid coin selection.")
+                return
+        except ValueError:
+            print("⚠️ Enter a valid coin number.")
+            return
+
+        symbol = results[index]["symbol"]
+
+        print(f"\n🔬 Deep-validating {symbol}...")
+
+        result = analyze_market(symbol)
+
+        print("\n🤖 Tool: analyze_market")
+        print("📊 Result:", result)
+
+        if isinstance(result, dict) and result.get("current_price") is not None:
+            print(f"💰 Current price: ${result['current_price']:,.2f}")
+
+        print("🔒 Live execution: BLOCKED")
         return
 
     if choice not in ["1", "2"]:
@@ -907,6 +1061,42 @@ def discover_binance_usdt_symbols():
     ]
 
 
+def get_active_scan_candidates(symbols, limit=50):
+    """Use Binance bulk 24h ticker data to reduce the technical scan universe."""
+
+    try:
+        response = requests.get(
+            f"{BINANCE_API}/api/v3/ticker/24hr",
+            timeout=15
+        )
+        response.raise_for_status()
+        tickers = response.json()
+
+        allowed = set(symbols)
+        ranked = []
+
+        for ticker in tickers:
+            symbol = ticker.get("symbol")
+
+            if symbol not in allowed:
+                continue
+
+            try:
+                quote_volume = float(ticker.get("quoteVolume", 0))
+            except (TypeError, ValueError):
+                quote_volume = 0
+
+            ranked.append((quote_volume, symbol))
+
+        ranked.sort(reverse=True)
+
+        return [symbol for _, symbol in ranked[:limit]]
+
+    except Exception as e:
+        print(f"⚠️ Bulk ticker filter failed: {e}")
+        return symbols
+
+
 def scan_one_symbol(symbol):
     try:
         response = requests.get(
@@ -951,13 +1141,17 @@ def scan_one_symbol(symbol):
 
 
 def scan_binance():
-    """Read-only fast scan of Binance active USDT spot pairs."""
+    """Fast read-only scan of Binance active USDT spot pairs."""
 
     symbols = discover_binance_usdt_symbols()
+
+    # Fast bulk-volume filter before requesting individual klines.
+    scan_symbols = get_active_scan_candidates(symbols, limit=50)
+
     results = []
 
     with ThreadPoolExecutor(max_workers=SCAN_WORKERS) as executor:
-        futures = [executor.submit(scan_one_symbol, s) for s in symbols]
+        futures = [executor.submit(scan_one_symbol, s) for s in scan_symbols]
 
         for future in as_completed(futures):
             result = future.result()

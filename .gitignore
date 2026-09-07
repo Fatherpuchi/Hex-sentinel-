@@ -1,0 +1,6 @@
+.env
+sentinel.db
+__pycache__/
+*.pyc
+*_backup.py
+*.save

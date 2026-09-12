@@ -145,13 +145,42 @@ def fetch_binance_data(symbol, interval, limit):
         if end_time:
             params["endTime"] = end_time
 
-        response = requests.get(
-            url,
-            params=params,
-            timeout=15
-        )
+        # STAGE 7.6.8.4 — BINANCE MARKET-DATA RETRY HARDENING
+        response = None
+        max_attempts = 3
 
-        response.raise_for_status()
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = requests.get(
+                    url,
+                    params=params,
+                    timeout=15
+                )
+                response.raise_for_status()
+                break
+
+            except (
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError
+            ) as e:
+                if attempt == max_attempts:
+                    print(
+                        f"❌ BINANCE MARKET DATA FAILED "
+                        f"AFTER {max_attempts} ATTEMPTS"
+                    )
+                    raise
+
+                wait_seconds = 2 ** (attempt - 1)
+
+                print(
+                    f"⚠️ Binance market-data attempt "
+                    f"{attempt}/{max_attempts} failed: {type(e).__name__}"
+                )
+                print(
+                    f"   Retrying in {wait_seconds}s..."
+                )
+
+                time.sleep(wait_seconds)
 
         batch = response.json()
 

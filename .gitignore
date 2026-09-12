@@ -1,6 +1,27 @@
+# Secrets & local data — never commit
 .env
 sentinel.db
+sentinel.db.*
+
+# Python
 __pycache__/
 *.pyc
-*_backup.py
+
+# Editor/save artifacts
 *.save
+
+# Every ad-hoc backup naming pattern currently in use for the two
+# live scripts (.bak, .backup, .backup_consensus, .before_X,
+# _backup_TIMESTAMP.py, etc.) — verified against the actual project
+# folder to catch all 44 stray snapshot files without touching the
+# real sentinel_ai.py / sentinel_stage1.py.
+sentinel_ai.py.*
+sentinel_ai_*backup*.py
+sentinel_stage1.py.*
+sentinel_stage1_*backup*.py
+backups/
+
+# Captured terminal transcripts (e.g. output redirected to a file
+# named "performance") — logs, not source or data.
+performance
+*.log

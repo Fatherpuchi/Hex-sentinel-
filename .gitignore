@@ -25,3 +25,11 @@ backups/
 # named "performance") — logs, not source or data.
 performance
 *.log
+
+# HEX SENTINEL Historical Market Warehouse — local only
+historical_data/
+data/
+datasets/
+*.csv
+*.zip
+*.parquet

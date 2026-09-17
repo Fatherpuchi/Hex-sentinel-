@@ -8,6 +8,7 @@ import requests
 import sqlite3
 import re
 from difflib import get_close_matches
+from sentinel_theme import c, kv, header, subheader, live_execution_line, format_price, print_router_result, GREEN, RED, YELLOW, CYAN, GRAY
 
 API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -4935,20 +4936,15 @@ def call_ai_provider(provider, system_prompt, user_prompt):
 def print_paper_prediction_result(result, horizon="24H"):
     """Print the final paper prediction in a phone-friendly layout."""
 
-    print("\n" + "=" * 60)
-    print("📋 HEX SENTINEL — PAPER PREDICTION RESULT")
-    print("=" * 60)
+    print("\n" + header("HEX SENTINEL — PAPER PREDICTION RESULT", "📋"))
 
     if not isinstance(result, dict):
-        print("Result unavailable.")
-        print("🔒 Live execution: BLOCKED")
-        print("=" * 60)
+        print(c("Result unavailable.", GRAY))
+        print(live_execution_line("BLOCKED"))
+        print(c("=" * 60, CYAN))
         return
 
-    print(
-        f"Symbol:            "
-        f"{result.get('symbol', 'UNKNOWN')}"
-    )
+    print(kv("Symbol", result.get("symbol", "UNKNOWN")))
 
     current_price = result.get("current_price", 0)
 
@@ -4957,93 +4953,64 @@ def print_paper_prediction_result(result, horizon="24H"):
     except (TypeError, ValueError):
         current_price = 0.0
 
-    print(f"Current Price:     ${current_price:,.2f}")
-    print(f"Horizon:           {horizon}")
-    print(
-        f"Strategy Status:   "
-        f"{result.get('strategy_status', 'UNKNOWN')}"
-    )
-    print(
-        f"Market Signal:     "
-        f"{result.get('signal', 'UNKNOWN')}"
-    )
-    print(
-        f"Risk Status:       "
-        f"{result.get('risk_status', 'UNKNOWN')}"
-    )
-    print(
-        f"Final Action:      "
-        f"{result.get('final_action', 'UNKNOWN')}"
-    )
-    print(
-        f"Live Execution:    "
-        f"{result.get('live_execution', 'BLOCKED')}"
-    )
+    print(f"{'Current Price:':<18}{c(format_price(current_price), CYAN)}")
+    print(f"{'Horizon:':<18}{horizon}")
+    print(kv("Strategy Status", result.get("strategy_status")))
+    print(kv("Market Signal", result.get("signal")))
+    print(kv("Risk Status", result.get("risk_status")))
+    print(kv("Final Action", result.get("final_action")))
+    print(kv("Live Execution", result.get("live_execution", "BLOCKED")))
 
-    consensus = result.get("multi_ai_consensus", {})
+    # BUGFIX: this was `result.get("multi_ai_consensus", {})`, but
+    # dict.get()'s default only applies when the KEY IS MISSING --
+    # not when the key exists with value None. run_legacy_pipeline's
+    # early-exit paths (invalid symbol, unknown Binance Futures
+    # symbol -- i.e. exactly the "lesser-known coin" case) explicitly
+    # set "multi_ai_consensus": None. That made `consensus` be None
+    # here, and the very next line's consensus.get(...) crashed with
+    # "'NoneType' object has no attribute 'get'". This is the
+    # confirmed root cause of the reported `predict <coin>` crash on
+    # obscure/unlisted symbols.
+    consensus = result.get("multi_ai_consensus") or {}
 
-    print("\n🤝 AI CONSENSUS")
-    print("-" * 60)
+    print(subheader("AI CONSENSUS", "🤝"))
+    print(kv("Status", consensus.get("status")))
     print(
-        f"Status:            "
-        f"{consensus.get('status', 'UNKNOWN')}"
+        kv(
+            "Direction",
+            # "direction" is explicitly None (not absent) for
+            # INVALID/CONFLICT consensus, so .get(key, default) alone
+            # wouldn't catch it -- same footgun as above.
+            consensus.get("direction") or "NONE (blocked)",
+        )
     )
-    print(
-        f"Direction:         "
-        f"{consensus.get('direction', 'UNKNOWN')}"
-    )
-    print(
-        f"Action:            "
-        f"{consensus.get('action', 'UNKNOWN')}"
-    )
+    print(kv("Action", consensus.get("action")))
 
-    groq = consensus.get("groq", {})
-    gemini = consensus.get("gemini", {})
+    groq = consensus.get("groq") or {}
+    gemini = consensus.get("gemini") or {}
 
-    print(
-        f"Groq:              "
-        f"{groq.get('DIRECTION', 'UNKNOWN')}"
-    )
-    print(
-        f"Gemini:            "
-        f"{gemini.get('DIRECTION', 'UNKNOWN')}"
-    )
+    print(kv("Groq", groq.get("DIRECTION")))
+    print(kv("Gemini", gemini.get("DIRECTION")))
 
     paper_prediction = result.get("paper_prediction")
 
-    print("\n📄 PAPER TRADE")
-    print("-" * 60)
+    print(subheader("PAPER TRADE", "📄"))
 
     if isinstance(paper_prediction, dict):
-        print(
-            f"Status:            "
-            f"{paper_prediction.get('status', 'UNKNOWN')}"
-        )
-        print(
-            f"Trade ID:          "
-            f"{paper_prediction.get('id', 'UNKNOWN')}"
-        )
-        print(
-            f"Symbol:            "
-            f"{paper_prediction.get('symbol', 'UNKNOWN')}"
-        )
-        print(
-            f"Created:           "
-            f"{paper_prediction.get('created_at', 'UNKNOWN')}"
-        )
-        print(
-            f"Expires:           "
-            f"{paper_prediction.get('expires_at', 'UNKNOWN')}"
-        )
+        print(kv("Status", paper_prediction.get("status")))
+        print(f"{'Trade ID:':<18}{paper_prediction.get('id', 'UNKNOWN')}")
+        print(kv("Symbol", paper_prediction.get("symbol")))
+        print(f"{'Created:':<18}{paper_prediction.get('created_at', 'UNKNOWN')}")
+        print(f"{'Expires:':<18}{paper_prediction.get('expires_at', 'UNKNOWN')}")
     else:
-        print("Status:            NOT CREATED")
+        print(kv("Status", "NOT CREATED"))
         print(
-            "Reason:             "
+            f"{'Reason:':<18}"
             "Final action did not produce a stored paper trade."
         )
 
-    print("\n🔒 Live Execution: BLOCKED")
-    print("=" * 60)
+    print("\n" + live_execution_line("BLOCKED"))
+    print(c("=" * 60, CYAN))
 
 
 def run_legacy_pipeline(symbol="BTCUSDT"):
@@ -5060,7 +5027,7 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
     # ============================================================
     # Confirm the symbol exists before Stage 1 requests market data.
     try:
-        symbol_valid, validated_symbol, symbol_suggestion = (
+        symbol_valid, validated_symbol, symbol_suggestion, high_confidence_match = (
             validate_binance_futures_symbol(symbol)
         )
     except Exception as exc:
@@ -5086,6 +5053,26 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
             "consensus_id": None,
             "agent_state": "SYMBOL_VALIDATION_FAILED",
         }
+
+    # AUTO-REPLACE: only for a high-confidence typo match (e.g. an
+    # extra/missing letter like REZUUSDT -> REZUSDT). Retries once
+    # with the corrected symbol instead of failing outright. A looser
+    # match is never auto-applied here — it's still shown to the user
+    # below, but requires them to re-run with the corrected symbol
+    # themselves, since at that similarity it could be a different
+    # coin, not a typo of the one they meant.
+    if not symbol_valid and high_confidence_match and symbol_suggestion:
+        print(
+            f"🔁 '{validated_symbol}' isn't a live Binance Futures "
+            f"symbol. Auto-correcting to closest match: "
+            f"{symbol_suggestion}"
+        )
+
+        symbol = symbol_suggestion
+
+        symbol_valid, validated_symbol, symbol_suggestion, high_confidence_match = (
+            validate_binance_futures_symbol(symbol)
+        )
 
     if not symbol_valid:
         print(
@@ -5319,6 +5306,7 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
             "Memory unavailable. "
             "Do not rely on previous decisions."
         )
+        print(f"⚠️ Decision memory unavailable: {e}")
 
     # ============================================================
     # STAGE 6.9 — MEMORY INTELLIGENCE FOR AI CONTEXT
@@ -5363,21 +5351,27 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
             web_evidence_context = format_web_evidence_for_ai(
                 web_intelligence
             )
+            evidence_count = web_intelligence.get('evidence_count', 0)
+            web_status = web_intelligence.get('status', 'UNKNOWN')
         else:
+            # BUGFIX: web_intelligence can be None/non-dict if the
+            # collector returns an unexpected value. Previously the
+            # code below called web_intelligence.get(...) directly
+            # and unconditionally, which raised
+            # "'NoneType' object has no attribute 'get'" for symbols
+            # with no web evidence available (e.g. low-liquidity
+            # coins) -- this is what caused `predict <coin>` to
+            # fail with that exact error for lesser-known symbols.
             web_evidence_context = (
                 "Web intelligence unavailable. "
                 "Do not rely on external web evidence."
             )
+            evidence_count = 0
+            web_status = "UNAVAILABLE"
 
         print("\n🌐 Web intelligence collected.")
-        print(
-            f"   Evidence items: "
-            f"{web_intelligence.get('evidence_count', 0)}"
-        )
-        print(
-            f"   Status: "
-            f"{web_intelligence.get('status', 'UNKNOWN')}"
-        )
+        print(f"   Evidence items: {evidence_count}")
+        print(f"   Status: {web_status}")
 
     except Exception as e:
         web_evidence_context = (
@@ -6096,7 +6090,7 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
         print("\n" + "=" * 60)
         print("💾 STAGE 3.2 — PERSISTENT AGENT STATE")
         print("=" * 60)
-        print(f"Decision saved:   ✓")
+        print("Decision saved:   ✓")
         print(f"Audit records:    {decision_count}")
         print(f"Latest action:    {final_action}")
         print(f"Live execution:   {live_execution}")
@@ -6327,7 +6321,6 @@ def get_current_price(symbol):
 #
 
 import hashlib
-import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 
@@ -9717,10 +9710,11 @@ def market_menu():
                 else "🔴"
             )
 
+            header_color = GREEN if choice == "1" else RED
             print(
-                f"\n{icon} SPOT {label} CANDIDATES"
+                c(f"\n{icon} SPOT {label} CANDIDATES", header_color, bold=True)
             )
-            print("-" * 60)
+            print(c("-" * 60, GRAY))
 
             print(
                 f"Universe: {scan['universe']}"
@@ -9758,9 +9752,14 @@ def market_menu():
                     f"{item['rsi']:.2f}"
                 )
 
+                trend_color = (
+                    GREEN if item['trend_strength'] > 0
+                    else RED if item['trend_strength'] < 0
+                    else GRAY
+                )
                 print(
                     f"   Trend: "
-                    f"{item['trend_strength']:.2f}%"
+                    f"{c(f"{item['trend_strength']:.2f}%", trend_color)}"
                 )
 
                 seen_symbols.add(
@@ -9837,8 +9836,9 @@ def market_menu():
             else "📉"
         )
 
-        print(f"\n{icon} {label}")
-        print("-" * 60)
+        header_color = GREEN if choice == "3" else RED
+        print(c(f"\n{icon} {label}", header_color, bold=True))
+        print(c("-" * 60, GRAY))
 
         print(
             f"Futures Universe: "
@@ -9874,9 +9874,14 @@ def market_menu():
                     .rstrip(".")
                 )
 
+                change_color = (
+                    GREEN if item['change_pct'] > 0
+                    else RED if item['change_pct'] < 0
+                    else GRAY
+                )
                 print(
                     f"   24h Change: "
-                    f"{item['change_pct']:.2f}%"
+                    f"{c(f"{item['change_pct']:.2f}%", change_color, bold=True)}"
                 )
 
             shown += len(batch)
@@ -10392,21 +10397,37 @@ def validate_binance_futures_symbol(symbol):
         _HEX_FUTURES_SYMBOL_CACHE["expires_at"] = now + 300
 
     if normalized in _HEX_FUTURES_SYMBOL_CACHE["symbols"]:
-        return True, normalized, None
+        return True, normalized, None, False
 
     candidates = sorted(_HEX_FUTURES_SYMBOL_CACHE["symbols"])
 
     base = normalized[:-4]
 
-    close = difflib.get_close_matches(
+    # High-confidence match: tight cutoff, safe to auto-correct to.
+    # Catches typos like a doubled/missing letter (REZUUSDT -> REZUSDT)
+    # without risking a confident swap onto some unrelated coin.
+    tight_match = difflib.get_close_matches(
+        normalized,
+        candidates,
+        n=1,
+        cutoff=0.72,
+    )
+
+    if tight_match:
+        return False, normalized, tight_match[0], True
+
+    # Looser match: shown to the user as a suggestion only, never
+    # auto-applied — below this similarity it could easily be a
+    # different coin entirely, not just a typo of the one they meant.
+    loose_match = difflib.get_close_matches(
         normalized,
         candidates,
         n=1,
         cutoff=0.40,
     )
 
-    if close:
-        suggestion = close[0]
+    if loose_match:
+        suggestion = loose_match[0]
     else:
         prefix = [
             item for item in candidates
@@ -10414,7 +10435,7 @@ def validate_binance_futures_symbol(symbol):
         ]
         suggestion = prefix[0] if prefix else None
 
-    return False, normalized, suggestion
+    return False, normalized, suggestion, False
 
 
 
@@ -10565,48 +10586,43 @@ def demo_interface():
                     print("🔒 Live execution: BLOCKED")
                     continue
 
-                print("\n" + "=" * 60)
-                print("🔮 HEX SENTINEL — 24H PAPER PREDICTION")
-                print("=" * 60)
-                print(f"Symbol: {symbol}")
-                print("Horizon: 24H")
-                print("Market data: LIVE BINANCE MARKET")
-                print("Execution: PAPER ONLY")
-                print("Live execution: BLOCKED")
-                print("=" * 60)
+                print("\n" + header("HEX SENTINEL — 24H PAPER PREDICTION", "🔮"))
+                print(kv("Symbol", symbol))
+                print(f"{'Horizon:':<18}24H")
+                print(f"{'Market data:':<18}{c('LIVE BINANCE MARKET', CYAN)}")
+                print(f"{'Execution:':<18}{c('PAPER ONLY', YELLOW)}")
+                print(live_execution_line("BLOCKED"))
+                print(c("=" * 60, CYAN))
 
                 try:
                     prediction_result = run_legacy_pipeline(symbol)
 
-                    print("\n" + "=" * 60)
-                    print("📋 24H PAPER PREDICTION PIPELINE COMPLETE")
-                    print("=" * 60)
-                    print(f"Symbol: {symbol}")
-                    print("Horizon: 24H")
+                    print("\n" + header("24H PAPER PREDICTION PIPELINE COMPLETE", "📋"))
+                    print(kv("Symbol", symbol))
+                    print(f"{'Horizon:':<18}24H")
                     print_paper_prediction_result(
                         prediction_result,
                         horizon="24H"
                     )
-                    print("🔒 Live execution: BLOCKED")
-                    print("=" * 60)
+                    print(live_execution_line("BLOCKED"))
+                    print(c("=" * 60, CYAN))
 
                 except Exception as e:
-                    print(f"\n⚠️ Prediction pipeline error: {e}")
-                    print("🔒 Live execution: BLOCKED")
+                    print(c(f"\n⚠️ Prediction pipeline error: {e}", RED, bold=True))
+                    print(live_execution_line("BLOCKED"))
 
                 continue
 
             router_result = route_user_request(user_request)
 
             if router_result["success"]:
-                print("\n🤖 Tool:", router_result["tool"])
-                print("📊 Result:", router_result["result"])
+                print_router_result(router_result["tool"], router_result["result"])
 
                 result_data = router_result["result"]
                 if isinstance(result_data, dict) and result_data.get("current_price") is not None:
-                    print(f"💰 Current price: ${result_data['current_price']:,.2f}")
+                    print(f"💰 Current price: {format_price(result_data['current_price'])}")
             else:
-                print("\n⚠️ Request blocked:", router_result["error"])
+                print(c(f"\n⚠️ Request blocked: {router_result['error']}", RED, bold=True))
 
             print("🔒 Live execution: BLOCKED")
 
@@ -11714,14 +11730,11 @@ def apply_provider_reliability_guard(
     }
 
 
-if __name__ == "__main__":
-    demo_interface()
 
 # ============================================================
 # HEX SENTINEL — API RATE LIMIT / REQUEST PROTECTION
 # ============================================================
 
-import time
 import threading
 
 _HEX_API_CACHE = {}
@@ -11895,3 +11908,6 @@ AGENT_TOOL_MANIFEST["cache_clear"] = {
 
 print("API rate-limit protection registered.")
 
+
+if __name__ == "__main__":
+    demo_interface()

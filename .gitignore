@@ -33,3 +33,16 @@ datasets/
 *.csv
 *.zip
 *.parquet
+
+# General catch-all for the "before_X" and "backup" naming
+# convention seen beyond just sentinel_ai/sentinel_stage1 — e.g.
+# portfolio_walk_forward_validation.py.before_schema_fix, and
+# anything similar you create for other files going forward.
+*.before_*
+*_backup_*.py
+*.backup_*
+
+# Scratch/working audit output — not the final report.
+audit_baseline/
+claude_audit/
+hex_audit.txt

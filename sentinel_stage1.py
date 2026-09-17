@@ -1,13 +1,13 @@
 import sqlite3
 import time
-import math
 import requests
 import numpy as np
 import os
 from datetime import datetime, timezone
+from sentinel_theme import format_price
 
 # ============================================================
-# BINANCE SENTINEL AI
+# HEX SENTINEL
 # STAGE 1 — PROOF OF EDGE ENGINE
 #
 # IMPORTANT:
@@ -783,7 +783,7 @@ def print_report(metrics, walk_forward, status):
 
     print("\n")
     print("=" * 60)
-    print("🤖 BINANCE SENTINEL AI — STAGE 1 REPORT")
+    print("🤖 HEX SENTINEL — STAGE 1 REPORT")
     print("=" * 60)
 
     print(f"\n📊 Symbol:              {SYMBOL}")
@@ -872,7 +872,7 @@ def print_report(metrics, walk_forward, status):
 
 def main():
 
-    print("\n🤖 BINANCE SENTINEL AI")
+    print("\n🤖 HEX SENTINEL")
     print("🧪 STAGE 1 — PROOF OF EDGE ENGINE")
     print("⚠️ PAPER/BACKTEST ONLY — NO REAL ORDERS\n")
 
@@ -970,7 +970,7 @@ def main():
     )
 
     print(
-        f"\n📡 Latest Price: ${price:,.2f}"
+        f"\n📡 Latest Price: {format_price(price)}"
     )
 
     print(

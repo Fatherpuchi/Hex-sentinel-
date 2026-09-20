@@ -8,7 +8,7 @@ import requests
 import sqlite3
 import re
 from difflib import get_close_matches
-from sentinel_theme import c, kv, header, subheader, live_execution_line, format_price, print_router_result, GREEN, RED, YELLOW, CYAN, GRAY
+from sentinel_theme import c, kv, header, subheader, live_execution_line, format_price, print_router_result, badge, GREEN, RED, YELLOW, CYAN, GRAY
 
 API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -1003,7 +1003,14 @@ def parse_multi_ai_assessment(ai_assessment):
 
     direction = direction_match.group(1).strip().upper()
 
-    if direction not in {"BUY", "SELL"}:
+    # HOLD is accepted here even though the AI prompt asks for
+    # BUY/SELL only (see DIRECTION: <BUY/SELL> in the prompt
+    # template) -- in practice a provider sometimes reflects the
+    # deterministic Stage 1 signal honestly when it's genuinely
+    # HOLD, and treating that as "invalid" mislabels a correct,
+    # neutral read as a consensus failure rather than what it
+    # actually is.
+    if direction not in {"BUY", "SELL", "HOLD"}:
         return {
             "valid": False,
             "reason": f"Invalid DIRECTION: {direction}."
@@ -1066,7 +1073,7 @@ def compare_multi_ai_assessments(groq_assessment, gemini_assessment):
     groq_direction = groq.get("DIRECTION")
     gemini_direction = gemini.get("DIRECTION")
 
-    valid_directions = {"BUY", "SELL"}
+    valid_directions = {"BUY", "SELL", "HOLD"}
 
     if (
         groq_direction not in valid_directions
@@ -1101,6 +1108,22 @@ def compare_multi_ai_assessments(groq_assessment, gemini_assessment):
             "action": "PAPER_SELL",
             "direction": "SELL",
             "reason": "Groq and Gemini independently agree on SELL direction.",
+            "agreements": agreements,
+            "groq": groq,
+            "gemini": gemini,
+        }
+
+    # Both AI providers independently agree there's no edge right
+    # now. This is genuine agreement, not a conflict -- without this
+    # branch it would fall through to the generic disagreement
+    # return below and print a factually wrong "Directional
+    # disagreement: Groq=HOLD, Gemini=HOLD" reason.
+    if groq_direction == "HOLD" and gemini_direction == "HOLD":
+        return {
+            "status": "AGREEMENT",
+            "action": "PAPER_HOLD",
+            "direction": "HOLD",
+            "reason": "Groq and Gemini independently agree on HOLD (no edge).",
             "agreements": agreements,
             "groq": groq,
             "gemini": gemini,
@@ -5013,6 +5036,315 @@ def print_paper_prediction_result(result, horizon="24H"):
     print(c("=" * 60, CYAN))
 
 
+# ============================================================
+# STAGE 7.6.8.1 — BATCH PREDICTION (MARKET SCANNER -> PREDICT)
+# ============================================================
+#
+# Runs 'predict' across the top N symbols from a market-scan
+# category instead of one at a time. Each predict call is a full
+# Stage 1 backtest subprocess (up to a ~3 min timeout) plus at
+# least two external Groq/Gemini calls -- NOT a quick lookup. An
+# unbounded "predict everything" loop over up to 50 symbols x 4
+# scanner categories would realistically take hours and would
+# very likely blow through Groq/Gemini rate limits partway
+# through. So this is paced (a fixed delay between calls) and
+# capped (BATCH_PREDICT_MAX) rather than unlimited.
+#
+# IMPORTANT: run_legacy_pipeline() raises SystemExit(1) directly
+# on a Stage 1 failure (timeout, bad market data, non-zero
+# subprocess exit) -- it does NOT raise a normal Exception for
+# that case. A bare "except Exception" around each symbol would
+# NOT catch a SystemExit, and it would propagate all the way up
+# and kill the whole interactive session, not just this batch.
+# Both Exception and SystemExit are caught per-symbol below so one
+# bad symbol can't take down the rest of the batch (or the app).
+
+BATCH_PREDICT_DEFAULT = 5
+BATCH_PREDICT_MAX = 20
+BATCH_PREDICT_DELAY_SECONDS = 5
+
+BATCH_PREDICT_CATEGORIES = {"bullish", "bearish", "gainers", "losers"}
+
+
+def get_batch_prediction_candidates(category, limit):
+    """
+    Return up to `limit` symbols for a market-scan category, for
+    use by the 'predict batch' command.
+
+    category: one of BATCH_PREDICT_CATEGORIES.
+    Raises RuntimeError if the underlying scan itself failed (e.g.
+    a network error), so the caller can report that clearly
+    instead of silently predicting nothing.
+    """
+
+    category = category.lower()
+
+    if category in {"bullish", "bearish"}:
+        scan = scan_spot_market(limit=50)
+
+        if scan.get("error"):
+            raise RuntimeError(f"Spot market scan failed: {scan['error']}")
+
+        pool = scan["top_buys"] if category == "bullish" else scan["top_sells"]
+        return [item["symbol"] for item in pool[:limit]]
+
+    if category in {"gainers", "losers"}:
+        movers = get_futures_movers(limit=limit)
+        pool = movers["gainers"] if category == "gainers" else movers["losers"]
+        return [item["symbol"] for item in pool[:limit]]
+
+    raise ValueError(f"Unknown batch category: {category}")
+
+
+def run_batch_predictions(category, limit):
+    """
+    Run 'predict' sequentially across the top `limit` symbols in a
+    market-scan category, pacing calls and isolating per-symbol
+    failures so one bad symbol can't take down the rest of the
+    batch or the interactive session.
+
+    PAPER/BACKTEST ONLY. LIVE EXECUTION REMAINS BLOCKED.
+    """
+
+    print("\n" + header(f"HEX SENTINEL — BATCH PREDICT: {category.upper()}", "🧺"))
+
+    try:
+        candidates = get_batch_prediction_candidates(category, limit)
+    except Exception as exc:
+        print(f"❌ Could not load candidates for '{category}': {exc}")
+        print("🔒 Live execution: BLOCKED")
+        return []
+
+    if not candidates:
+        print(f"No candidates found for '{category}' right now.")
+        print("🔒 Live execution: BLOCKED")
+        return []
+
+    print(f"Running {len(candidates)} prediction(s): {', '.join(candidates)}")
+    print(c(
+        f"(~{BATCH_PREDICT_DELAY_SECONDS}s pacing between calls; each "
+        "prediction can itself take a couple of minutes)",
+        GRAY,
+    ))
+
+    results = []
+
+    for index, symbol in enumerate(candidates, start=1):
+        print(c(f"\n[{index}/{len(candidates)}] {symbol}", CYAN, bold=True))
+
+        try:
+            result = run_legacy_pipeline(symbol)
+
+            results.append({
+                "symbol": symbol,
+                "signal": result.get("signal"),
+                "final_action": result.get("final_action"),
+                "risk_status": result.get("risk_status"),
+                "ok": True,
+                "error": None,
+            })
+
+        except (Exception, SystemExit) as exc:
+            print(f"⚠️ {symbol} failed: {exc}")
+
+            results.append({
+                "symbol": symbol,
+                "signal": None,
+                "final_action": None,
+                "risk_status": None,
+                "ok": False,
+                "error": str(exc),
+            })
+
+        if index < len(candidates):
+            time.sleep(BATCH_PREDICT_DELAY_SECONDS)
+
+    print("\n" + header("BATCH PREDICT — SUMMARY", "📋"))
+
+    for row in results:
+        if row["ok"]:
+            print(
+                f"{row['symbol']:<14}"
+                f"{badge(row['final_action'] or 'UNKNOWN')}  "
+                f"(signal: {row['signal']}, risk: {row['risk_status']})"
+            )
+        else:
+            print(f"{row['symbol']:<14}{badge('ERROR')}  {row['error']}")
+
+    print("\n🔒 Live execution: BLOCKED")
+    print("=" * 60)
+
+    return results
+
+
+# ============================================================
+# STAGE 7.6.8.0 — MARKET CAP / FUNDAMENTALS CONTEXT (COINGECKO)
+# ============================================================
+#
+# Advisory-only fundamentals context (market cap, rank, circulating
+# supply, fully-diluted valuation) from CoinGecko's free public API.
+# Like the web intelligence layer below, this NEVER creates or
+# blocks a trading signal on its own -- on any failure it degrades
+# to an "UNAVAILABLE" context string and the pipeline continues,
+# the same fail-open pattern that fixed the earlier NoneType crash
+# when web intelligence was missing for a lesser-known coin.
+#
+# CoinGecko's free tier is rate-limited (roughly 10-30 calls/min,
+# and that limit is CoinGecko's to change). A single predict does
+# up to 2 calls here (search + markets); a `predict batch` of 5
+# different symbols can hit CoinGecko ~10 times in well under a
+# minute. The 10-minute cache below only helps on repeat symbols
+# within that window, not a batch of 5 *different* coins -- so
+# rate-limit UNAVAILABLE results are expected occasionally in
+# batch runs, not a sign anything is broken.
+
+_MARKET_CAP_CACHE = {}
+MARKET_CAP_CACHE_TTL_SECONDS = 600  # market cap doesn't need per-second freshness
+
+
+def _coingecko_find_coin_id(base_asset):
+    """
+    Resolve a Binance base asset (e.g. 'BTC', 'ONE') to a CoinGecko
+    coin id via CoinGecko's free /search endpoint. When multiple
+    coins share a ticker (common for small-cap tokens), picks the
+    one with the best (lowest number) market_cap_rank among exact
+    symbol matches -- that's virtually always the coin a Binance
+    listing actually refers to. Returns None on no confident match.
+    """
+
+    response = requests.get(
+        "https://api.coingecko.com/api/v3/search",
+        params={"query": base_asset},
+        timeout=10,
+    )
+    response.raise_for_status()
+
+    coins = response.json().get("coins", [])
+
+    exact_matches = [
+        coin for coin in coins
+        if str(coin.get("symbol", "")).upper() == base_asset.upper()
+    ]
+
+    if not exact_matches:
+        return None
+
+    exact_matches.sort(
+        key=lambda coin: (
+            coin.get("market_cap_rank") is None,
+            coin.get("market_cap_rank") or float("inf"),
+        )
+    )
+
+    return exact_matches[0].get("id")
+
+
+def get_market_cap_context(symbol):
+    """
+    Return advisory market-cap/fundamentals context for a Binance
+    symbol (e.g. 'ONEUSDT'). Never raises -- a missing/renamed/
+    illiquid coin or a CoinGecko rate limit degrades to a clear
+    "unavailable" status instead of breaking the caller.
+    """
+
+    base_asset = str(symbol).upper()
+
+    for suffix in ("USDT", "USDC", "BUSD", "FDUSD"):
+        if base_asset.endswith(suffix):
+            base_asset = base_asset[: -len(suffix)]
+            break
+
+    cached = _MARKET_CAP_CACHE.get(base_asset)
+
+    if cached and (time.time() - cached["fetched_at"]) < MARKET_CAP_CACHE_TTL_SECONDS:
+        return cached["data"]
+
+    try:
+        coin_id = _coingecko_find_coin_id(base_asset)
+
+        if not coin_id:
+            data = {"status": "NOT_FOUND", "base_asset": base_asset}
+        else:
+            response = requests.get(
+                "https://api.coingecko.com/api/v3/coins/markets",
+                params={"vs_currency": "usd", "ids": coin_id},
+                timeout=10,
+            )
+            response.raise_for_status()
+
+            rows = response.json()
+
+            if not rows:
+                data = {"status": "NOT_FOUND", "base_asset": base_asset}
+            else:
+                row = rows[0]
+
+                data = {
+                    "status": "AVAILABLE",
+                    "base_asset": base_asset,
+                    "coingecko_id": coin_id,
+                    "market_cap_usd": row.get("market_cap"),
+                    "market_cap_rank": row.get("market_cap_rank"),
+                    "fully_diluted_valuation_usd": row.get(
+                        "fully_diluted_valuation"
+                    ),
+                    "circulating_supply": row.get("circulating_supply"),
+                    "total_supply": row.get("total_supply"),
+                    "max_supply": row.get("max_supply"),
+                    "total_volume_24h_usd": row.get("total_volume"),
+                }
+
+    except Exception as exc:
+        data = {
+            "status": "UNAVAILABLE",
+            "base_asset": base_asset,
+            "error": str(exc),
+        }
+
+    _MARKET_CAP_CACHE[base_asset] = {"data": data, "fetched_at": time.time()}
+    return data
+
+
+def format_market_cap_context_for_ai(context):
+    """Convert get_market_cap_context() output into bounded AI context."""
+
+    if not isinstance(context, dict):
+        return "MARKET CAP CONTEXT: UNAVAILABLE"
+
+    status = context.get("status")
+
+    if status == "AVAILABLE":
+        def _fmt(value):
+            return f"${value:,.0f}" if isinstance(value, (int, float)) else "UNKNOWN"
+
+        return "\n".join([
+            "MARKET CAP / FUNDAMENTALS CONTEXT (advisory only, source: CoinGecko):",
+            f"Market Cap: {_fmt(context.get('market_cap_usd'))} "
+            f"(rank #{context.get('market_cap_rank', 'UNKNOWN')})",
+            f"Fully Diluted Valuation: "
+            f"{_fmt(context.get('fully_diluted_valuation_usd'))}",
+            f"Circulating Supply: {context.get('circulating_supply', 'UNKNOWN')}",
+            f"Max Supply: {context.get('max_supply') or 'UNCAPPED/UNKNOWN'}",
+            f"24h Volume (CoinGecko, cross-exchange): "
+            f"{_fmt(context.get('total_volume_24h_usd'))}",
+            "This is fundamental/liquidity context only -- it does not "
+            "override deterministic strategy status or safety gates.",
+        ])
+
+    if status == "NOT_FOUND":
+        return (
+            "MARKET CAP CONTEXT: No confident CoinGecko match for "
+            f"{context.get('base_asset', 'this symbol')}. "
+            "Do not infer market cap or supply figures."
+        )
+
+    return (
+        "MARKET CAP CONTEXT: UNAVAILABLE "
+        f"({context.get('error', 'unknown error')}). "
+        "Do not infer market cap or supply figures."
+    )
+
+
 def run_legacy_pipeline(symbol="BTCUSDT"):
     """Run the Stage 1–4 startup pipeline for a selected symbol."""
 
@@ -5380,6 +5712,31 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
         )
         print(f"⚠️ Web intelligence unavailable: {e}")
 
+    # ============================================================
+    # STAGE 7.6.8.5B — MARKET CAP / FUNDAMENTALS CONTEXT
+    # ============================================================
+
+    try:
+        market_cap_data = get_market_cap_context(symbol)
+        market_cap_context = format_market_cap_context_for_ai(market_cap_data)
+
+        print("\n💰 Market cap context collected.")
+        print(f"   Status: {market_cap_data.get('status', 'UNKNOWN')}")
+
+        if market_cap_data.get("status") == "AVAILABLE":
+            print(
+                "   Market Cap: "
+                f"${(market_cap_data.get('market_cap_usd') or 0):,.0f} "
+                f"(rank #{market_cap_data.get('market_cap_rank', '?')})"
+            )
+
+    except Exception as e:
+        market_cap_context = (
+            "MARKET CAP CONTEXT: UNAVAILABLE. "
+            "Do not infer market cap or supply figures."
+        )
+        print(f"⚠️ Market cap context unavailable: {e}")
+
     user_prompt = f"""
     Deterministic strategy status: {status}
     Paper signal: {signal}
@@ -5395,9 +5752,11 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
     Web intelligence and external evidence:
     {web_evidence_context}
 
+    {market_cap_context}
+
     IMPORTANT:
-    Web evidence is advisory context only.
-    It must never override deterministic strategy status,
+    Web evidence and market cap context are advisory only.
+    They must never override deterministic strategy status,
     risk controls, consensus requirements, reliability guards,
     or the final Sentinel safety decision.
     Treat unsupported, stale, conflicting, or low-quality web
@@ -10242,16 +10601,19 @@ def get_prediction_performance_report():
             else 0.0
         )
 
+        # None (not 0.0) when there's no evaluated data of that
+        # direction yet -- 0.0 would be indistinguishable from a
+        # genuine "tried and failed every time" result.
         buy_accuracy = (
             (buy_successes / buy_evaluated) * 100.0
             if buy_evaluated
-            else 0.0
+            else None
         )
 
         sell_accuracy = (
             (sell_successes / sell_evaluated) * 100.0
             if sell_evaluated
-            else 0.0
+            else None
         )
 
         return {
@@ -10326,15 +10688,19 @@ def print_prediction_performance_report():
 
     print("-" * 60)
 
-    print(
-        f"📈 BUY Accuracy:        "
+    buy_acc_text = (
         f"{report['buy_accuracy']:.2f}%"
+        if report['buy_accuracy'] is not None
+        else "N/A (no data yet)"
+    )
+    sell_acc_text = (
+        f"{report['sell_accuracy']:.2f}%"
+        if report['sell_accuracy'] is not None
+        else "N/A (no data yet)"
     )
 
-    print(
-        f"📉 SELL Accuracy:       "
-        f"{report['sell_accuracy']:.2f}%"
-    )
+    print(f"📈 BUY Accuracy:        {buy_acc_text}")
+    print(f"📉 SELL Accuracy:       {sell_acc_text}")
 
     print("-" * 60)
 
@@ -10351,6 +10717,183 @@ def print_prediction_performance_report():
     print("🔒 Live execution: BLOCKED")
     print("=" * 60)
 
+
+# ============================================================
+# STAGE 7.6.9.3 — PAPER TRADE TP/SL OUTCOME REPORT
+# ============================================================
+#
+# IMPORTANT — this is a *different* population of rows than
+# get_prediction_performance_report() above.
+#
+#   - 'predict <coin>' rows (consensus_status='DIRECTIONAL_PREDICTION')
+#     are bare directional bets with stop_loss/tp1/tp2/tp3 hardcoded
+#     to 0.0 ("not applicable to prediction") -- they never have real
+#     TP/SL levels, so they can never appear here.
+#
+#   - Real paper trades (consensus_status='AGREEMENT', created by
+#     persist_consensus_paper_trade()) DO carry real stop_loss/tp1/
+#     tp2/tp3 levels and ARE monitored tick-by-tick for level crossings
+#     by monitor_active_paper_trades(). This report summarizes those.
+#
+# TP1/TP2 are partial-target markers only -- hitting them does not
+# resolve the trade (status stays ACTIVE). Only a TP3 hit or a stop
+# hit resolves the trade to RESOLVED; a trade can also resolve at its
+# 24h expiry via the plain directional check if neither level was hit.
+
+def get_paper_trade_outcome_report():
+    """
+    Report TP/SL outcomes for real AGREEMENT-consensus paper trades.
+
+    PAPER/BACKTEST ONLY. LIVE EXECUTION REMAINS BLOCKED.
+    """
+
+    ensure_paper_trade_plans_table()
+
+    conn = sqlite3.connect("sentinel.db")
+    cursor = conn.cursor()
+
+    try:
+        # Excludes leftover manual/TEST seed rows (status='TEST') from
+        # early development -- those were never real trade attempts,
+        # so counting them made total_trades != active + resolved.
+        trade_filter = "consensus_status = 'AGREEMENT' AND status != 'TEST'"
+
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM paper_trade_plans WHERE {trade_filter}
+        """)
+        total_trades = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM paper_trade_plans
+            WHERE {trade_filter} AND status = 'ACTIVE'
+        """)
+        active_trades = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM paper_trade_plans
+            WHERE {trade_filter} AND status = 'RESOLVED'
+        """)
+        resolved_trades = cursor.fetchone()[0] or 0
+
+        # Partial-target touches -- these don't resolve the trade,
+        # so they can be true for both ACTIVE and RESOLVED rows.
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM paper_trade_plans
+            WHERE {trade_filter} AND tp1_hit_at IS NOT NULL
+        """)
+        tp1_hits = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM paper_trade_plans
+            WHERE {trade_filter} AND tp2_hit_at IS NOT NULL
+        """)
+        tp2_hits = cursor.fetchone()[0] or 0
+
+        # Resolution reasons -- mutually exclusive, each row lands in
+        # exactly one bucket once RESOLVED.
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM paper_trade_plans
+            WHERE {trade_filter} AND outcome = 'TP3'
+        """)
+        tp3_hits = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM paper_trade_plans
+            WHERE {trade_filter} AND outcome = 'STOP_LOSS'
+        """)
+        stop_loss_hits = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM paper_trade_plans
+            WHERE {trade_filter} AND outcome = 'SUCCESS'
+        """)
+        expired_success = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM paper_trade_plans
+            WHERE {trade_filter} AND outcome = 'FAILURE'
+        """)
+        expired_failure = cursor.fetchone()[0] or 0
+
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM paper_trade_plans
+            WHERE {trade_filter} AND outcome = 'NEUTRAL'
+        """)
+        expired_neutral = cursor.fetchone()[0] or 0
+
+        # Win rate over resolved trades: a TP3 hit or a directionally
+        # correct expiry both count as a win; a stop hit or a wrong
+        # expiry both count as a loss. NEUTRAL counts as neither.
+        wins = tp3_hits + expired_success
+        losses = stop_loss_hits + expired_failure
+
+        win_rate = (
+            (wins / resolved_trades) * 100.0
+            if resolved_trades
+            else None
+        )
+
+        return {
+            "total_trades": total_trades,
+            "active_trades": active_trades,
+            "resolved_trades": resolved_trades,
+            "tp1_hits": tp1_hits,
+            "tp2_hits": tp2_hits,
+            "tp3_hits": tp3_hits,
+            "stop_loss_hits": stop_loss_hits,
+            "expired_success": expired_success,
+            "expired_failure": expired_failure,
+            "expired_neutral": expired_neutral,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": win_rate,
+            "live_execution": "BLOCKED",
+        }
+
+    finally:
+        conn.close()
+
+
+def print_paper_trade_outcome_report():
+    """
+    Print the TP/SL outcome report for real paper trades.
+
+    PAPER/BACKTEST ONLY. LIVE EXECUTION REMAINS BLOCKED.
+    """
+
+    report = get_paper_trade_outcome_report()
+
+    print("\n" + header("HEX SENTINEL — PAPER TRADE TP/SL OUTCOMES", "🎯"))
+
+    w = 30  # widest label below ("Expired — Correct Direction:") needs room
+
+    print(kv("Total Trades", report["total_trades"], width=w, default="0"))
+    print(kv("Active", report["active_trades"], width=w, default="0"))
+    print(kv("Resolved", report["resolved_trades"], width=w, default="0"))
+
+    print(c("\n-- Partial target touches (trade may still be active) --", GRAY))
+    print(kv("TP1 Hit", report["tp1_hits"], width=w, default="0"))
+    print(kv("TP2 Hit", report["tp2_hits"], width=w, default="0"))
+
+    print(c("\n-- Resolution reason (resolved trades only) --", GRAY))
+    print(kv("TP3 Hit (full target)", report["tp3_hits"], width=w, default="0"))
+    print(kv("Stop-Loss Hit", report["stop_loss_hits"], width=w, default="0"))
+    print(kv("Expired — Correct Direction", report["expired_success"], width=w, default="0"))
+    print(kv("Expired — Wrong Direction", report["expired_failure"], width=w, default="0"))
+    print(kv("Expired — Neutral", report["expired_neutral"], width=w, default="0"))
+
+    print(c("\n-- Overall --", GRAY))
+    win_rate_text = (
+        f"{report['win_rate']:.2f}%"
+        if report["win_rate"] is not None
+        else "N/A (no resolved trades yet)"
+    )
+    print(f"{'Win Rate:':<{w}}{win_rate_text}")
+    print(kv("Wins (TP3 + correct expiry)", report["wins"], width=w, default="0"))
+    print(kv("Losses (SL + wrong expiry)", report["losses"], width=w, default="0"))
+
+    print("\n🔒 Live execution: BLOCKED")
+    print("=" * 60)
 
 
 # ============================================================
@@ -10494,7 +11037,9 @@ def demo_interface():
     print("  history  → Recent audited decisions")
     print("  analyze  → Analyze the current market")
     print("  predict <coin> [horizon] → 24H paper prediction")
+    print("  predict batch <bullish|bearish|gainers|losers> [n] → batch predict (default 5)")
     print("  performance → 24H prediction performance report")
+    print("  trades   → Paper trade TP/SL outcomes (TP1/TP2/TP3/stop hits)")
     print("  cache    → API cache / rate-limit protection status")
     print("  cache clear → Clear the API response cache")
     print("  quit     → Exit demo")
@@ -10538,6 +11083,96 @@ def demo_interface():
                     )
 
                 print("🔒 Live execution: BLOCKED")
+                continue
+
+            # ========================================================
+            # STAGE 7.6.9.3 — PAPER TRADE TP/SL OUTCOME COMMAND
+            # ========================================================
+
+            if user_request in {
+                "trades",
+                "trade outcomes",
+                "tp sl",
+                "tpsl",
+            }:
+                try:
+                    print_paper_trade_outcome_report()
+                except Exception as trades_error:
+                    print(
+                        "\n⚠️ Trade outcome report failed: "
+                        f"{trades_error}"
+                    )
+
+                print("🔒 Live execution: BLOCKED")
+                continue
+
+            # ========================================================
+            # STAGE 7.6.8.1 — BATCH PREDICT COMMAND
+            # ========================================================
+            # Usage:
+            #   predict batch bullish
+            #   predict batch bearish 8
+            #   predict batch gainers
+            #   predict batch losers 10
+            #
+            # Checked BEFORE the generic "predict " handler below,
+            # since "predict batch ..." also starts with "predict "
+            # and would otherwise be swallowed by that handler's
+            # <coin> parsing and rejected as bad usage.
+            if user_request.startswith("predict batch"):
+                batch_parts = user_request.split()
+
+                if len(batch_parts) < 3 or len(batch_parts) > 4:
+                    print(
+                        "\n⚠️ Usage: predict batch "
+                        "<bullish|bearish|gainers|losers> [count]"
+                    )
+                    print(
+                        "   Example: predict batch bullish "
+                        f"(default {BATCH_PREDICT_DEFAULT})"
+                    )
+                    print("   Example: predict batch gainers 10")
+                    print("🔒 Live execution: BLOCKED")
+                    continue
+
+                batch_category = batch_parts[2].lower()
+
+                if batch_category not in BATCH_PREDICT_CATEGORIES:
+                    print(f"\n⚠️ Unknown category: {batch_category}")
+                    print(
+                        "   Choose from: "
+                        f"{', '.join(sorted(BATCH_PREDICT_CATEGORIES))}"
+                    )
+                    print("🔒 Live execution: BLOCKED")
+                    continue
+
+                if len(batch_parts) == 4:
+                    try:
+                        batch_count = int(batch_parts[3])
+                    except ValueError:
+                        print(
+                            "\n⚠️ Count must be a number, got: "
+                            f"{batch_parts[3]}"
+                        )
+                        print("🔒 Live execution: BLOCKED")
+                        continue
+                else:
+                    batch_count = BATCH_PREDICT_DEFAULT
+
+                if batch_count != max(1, min(batch_count, BATCH_PREDICT_MAX)):
+                    print(
+                        f"\nℹ️ Clamping count to the batch cap of "
+                        f"{BATCH_PREDICT_MAX}."
+                    )
+
+                batch_count = max(1, min(batch_count, BATCH_PREDICT_MAX))
+
+                try:
+                    run_batch_predictions(batch_category, batch_count)
+                except Exception as batch_error:
+                    print(f"\n⚠️ Batch predict failed: {batch_error}")
+                    print("🔒 Live execution: BLOCKED")
+
                 continue
 
             # ========================================================

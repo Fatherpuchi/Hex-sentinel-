@@ -13,6 +13,19 @@ from sentinel_theme import c, kv, header, subheader, live_execution_line, format
 API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+# ============================================================
+# HORIZON PROFILE (set by hex.py; defaults keep the original
+# 24h / sentinel.db / 1h-candle behaviour exactly as before)
+# ============================================================
+SENTINEL_DB_PATH = os.getenv("SENTINEL_DB", "sentinel.db")
+try:
+    HORIZON_HOURS = int(os.getenv("SENTINEL_HORIZON_HOURS", "24"))
+    if HORIZON_HOURS <= 0:
+        HORIZON_HOURS = 24
+except ValueError:
+    HORIZON_HOURS = 24
+HORIZON_LABEL = f"{HORIZON_HOURS}H"
+
 if not API_KEY:
     print("ERROR: GROQ_API_KEY is not loaded.")
     raise SystemExit(1)
@@ -23,240 +36,97 @@ if not API_KEY:
 # ============================================================
 
 def call_groq_analysis(system_prompt, user_prompt):
-    """Call the existing Groq market-analysis provider."""
-    response = requests.post(
-        GROQ_URL,
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": "openai/gpt-oss-120b",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.2,
-            "reasoning_effort": "low",
-            "include_reasoning": False,
-            "max_completion_tokens": 300,
-        },
-        timeout=60,
-    )
+    """
+    Call the existing Groq market-analysis provider, with retries.
 
-    response.raise_for_status()
+    Previously a single failed request here (timeout, 5xx, empty
+    response) immediately failed the whole assessment with no
+    chance to recover -- unlike Gemini, which already retries.
+    Mirrors Gemini's retry/backoff logic exactly so neither provider
+    is the weak link.
+    """
 
-    data = response.json()
-    return data["choices"][0]["message"].get("content") or ""
+    max_attempts = 5
+    retry_status_codes = {429, 500, 502, 503, 504}
+    last_error = None
 
+    for attempt in range(1, max_attempts + 1):
+        print(f"🌐 GROQ PROVIDER | Attempt {attempt}/{max_attempts}")
 
-
-
-
-def build_trade_plan_market_snapshot(symbol="BTCUSDT"):
-    """Build a prediction-time market snapshot using only completed Binance data."""
-    symbol = symbol.upper()
-    if not symbol.endswith("USDT"):
-        symbol += "USDT"
-
-    original_symbol = sentinel_stage1.SYMBOL
-
-    try:
-        sentinel_stage1.SYMBOL = symbol
-
-        server_response = requests.get(
-            "https://api.binance.com/api/v3/time",
-            timeout=10
-        )
-        server_response.raise_for_status()
-        server_time_ms = int(server_response.json()["serverTime"])
-
-        candles = sentinel_stage1.fetch_binance_data(
-            symbol,
-            sentinel_stage1.INTERVAL,
-            sentinel_stage1.CANDLES
-        )
-
-        if len(candles) < 200:
-            raise RuntimeError(
-                "Insufficient Binance candle data for trade-plan snapshot."
+        try:
+            response = requests.post(
+                GROQ_URL,
+                headers={
+                    "Authorization": f"Bearer {API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "openai/gpt-oss-120b",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.2,
+                    "reasoning_effort": "low",
+                    "include_reasoning": False,
+                    "max_completion_tokens": 600,
+                },
+                timeout=60,
             )
 
-        interval_seconds = 3600
-        boundary_ms = server_time_ms - (server_time_ms % (interval_seconds * 1000))
+            if response.status_code >= 400:
+                status_code = response.status_code
 
-        valid_candles = [
-            row for row in candles
-            if int(row["open_time"]) < boundary_ms
-        ]
+                if status_code in retry_status_codes:
+                    raise RuntimeError(f"RETRYABLE_HTTP_{status_code}")
 
-        if len(valid_candles) < 200:
-            raise RuntimeError(
-                "Insufficient completed Binance candles for trade-plan snapshot."
-            )
+                response.raise_for_status()
 
-        future_candles = [
-            row for row in candles
-            if int(row["open_time"]) >= server_time_ms
-        ]
+            data = response.json()
+            result = (data["choices"][0]["message"].get("content") or "").strip()
 
-        future_data_included = bool(future_candles)
+            if not result:
+                raise RuntimeError("Groq returned no usable assessment")
 
-        prepared = sentinel_stage1.prepare_indicators(valid_candles)
+            print(f"✅ GROQ PROVIDER | SUCCESS | Attempt {attempt}")
+            return result
 
-        if not prepared:
-            raise RuntimeError(
-                "Indicator preparation returned no usable completed rows."
-            )
+        except requests.exceptions.Timeout as e:
+            last_error = f"TIMEOUT: {e}"
 
-        latest = prepared[-1]
+        except requests.exceptions.ConnectionError as e:
+            last_error = f"CONNECTION_ERROR: {e}"
 
-        current_price = get_current_price(symbol)
+        except requests.exceptions.HTTPError as e:
+            last_error = f"HTTP_ERROR: {e}"
+            print(f"❌ GROQ PROVIDER FAILURE | {last_error}")
+            raise RuntimeError(f"GROQ_PROVIDER_HTTP_ERROR: {e}") from e
 
-        return {
-            "timestamp": latest["datetime"].isoformat(),
-            "symbol": symbol,
-            "current_price": float(current_price),
-            "candle_close": float(latest["close"]),
-            "ema_fast": float(latest["ema_fast"]),
-            "ema_slow": float(latest["ema_slow"]),
-            "rsi": float(latest["rsi"]),
-            "open": float(latest["open"]),
-            "high": float(latest["high"]),
-            "low": float(latest["low"]),
-            "volume": float(latest["volume"]),
-            "server_time": datetime.fromtimestamp(
-                server_time_ms / 1000,
-                timezone.utc
-            ).isoformat(),
-            "data_source": "LIVE_BINANCE_SPOT_KLINES",
-            "future_data_included": future_data_included,
-            "completed_candle_only": True,
-            "live_execution": "BLOCKED"
-        }
+        except RuntimeError as e:
+            error_text = str(e)
 
-    finally:
-        sentinel_stage1.SYMBOL = original_symbol
+            if (
+                error_text.startswith("RETRYABLE_HTTP_")
+                or error_text == "Groq returned no usable assessment"
+            ):
+                last_error = error_text
+            else:
+                raise
 
-def call_groq_trade_plan(system_prompt, user_prompt):
-    """Generate an independent 24-hour paper-trade plan with Groq."""
-    response = requests.post(
-        GROQ_URL,
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": "openai/gpt-oss-120b",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": 0.2,
-            "reasoning_effort": "low",
-            "include_reasoning": False,
-            "max_completion_tokens": 400,
-        },
-        timeout=60,
-    )
+        except requests.exceptions.RequestException as e:
+            last_error = f"REQUEST_ERROR: {e}"
 
-    response.raise_for_status()
+        if attempt < max_attempts:
+            wait_seconds = 2 ** attempt
+            print(f"⚠️ GROQ TRANSIENT FAILURE | {last_error}")
+            print(f"🔄 Retrying in {wait_seconds}s...")
+            time.sleep(wait_seconds)
 
-    data = response.json()
-    return data["choices"][0]["message"].get("content") or ""
+    print(f"❌ GROQ PROVIDER FAILURE | EXHAUSTED AFTER {max_attempts} ATTEMPTS")
+    raise RuntimeError(f"GROQ_PROVIDER_RETRY_EXHAUSTED: {last_error}")
 
 
-def call_gemini_trade_plan(system_prompt, user_prompt):
-    """Generate an independent 24-hour paper-trade plan with Gemini."""
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if not gemini_key:
-        raise RuntimeError("GEMINI_API_KEY is not loaded")
 
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/"
-        "models/gemini-3.6-flash:streamGenerateContent"
-    )
-
-    payload = {
-        "systemInstruction": {
-            "parts": [{"text": system_prompt}]
-        },
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": user_prompt}]
-            }
-        ]
-    }
-
-    try:
-        response = requests.post(
-            url,
-            params={"alt": "sse"},
-            headers={
-                "x-goog-api-key": gemini_key,
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            stream=True,
-            timeout=60,
-        )
-        response.raise_for_status()
-
-    except requests.exceptions.Timeout as e:
-        print("❌ GEMINI PROVIDER FAILURE | Status: TIMEOUT | Type: Timeout")
-        raise RuntimeError(
-            f"GEMINI_PROVIDER_TIMEOUT: {e}"
-        ) from e
-
-    except requests.exceptions.ConnectionError as e:
-        print("❌ GEMINI PROVIDER FAILURE | Status: CONNECTION_ERROR | Type: ConnectionError")
-        raise RuntimeError(
-            f"GEMINI_PROVIDER_CONNECTION_ERROR: {e}"
-        ) from e
-
-    except requests.exceptions.HTTPError as e:
-        print("❌ GEMINI PROVIDER FAILURE | Status: HTTP_ERROR | Type: HTTPError")
-        raise RuntimeError(
-            f"GEMINI_PROVIDER_HTTP_ERROR: {e}"
-        ) from e
-
-    except requests.exceptions.RequestException as e:
-        print("❌ GEMINI PROVIDER FAILURE | Status: REQUEST_ERROR | Type: RequestException")
-        raise RuntimeError(
-            f"GEMINI_PROVIDER_REQUEST_ERROR: {e}"
-        ) from e
-
-    chunks = []
-
-    for line in response.iter_lines(decode_unicode=True):
-        if not line:
-            continue
-
-        if line.startswith("data:"):
-            data_line = line[5:].strip()
-
-            if not data_line:
-                continue
-
-            try:
-                data = requests.models.complexjson.loads(data_line)
-            except Exception:
-                continue
-
-            for candidate in data.get("candidates", []):
-                content = candidate.get("content", {})
-                for part in content.get("parts", []):
-                    text = part.get("text")
-                    if isinstance(text, str):
-                        chunks.append(text)
-
-    result = "".join(chunks).strip()
-
-    if not result:
-        raise RuntimeError("Gemini returned no usable trade plan")
-
-    return result
 
 
 def parse_trade_plan(plan_text):
@@ -556,8 +426,14 @@ def compare_trade_plans(groq_plan_text, gemini_plan_text):
     # RISK / TARGET CONSENSUS TOLERANCES
     # ------------------------------------------------------------
 
-    stop_tolerance = 0.05
-    tp1_tolerance = 0.05
+    # Loosened from 5% to 8% -- both providers must still independently
+    # agree on DIRECTION first (that requirement is untouched); this
+    # only controls how close their risk levels must be once they
+    # already agree. 5% was rejecting trades where both providers saw
+    # the same setup but picked stops a few percent apart, which is
+    # normal variance for two independent models, not a real red flag.
+    stop_tolerance = 0.08
+    tp1_tolerance = 0.08
 
     stop_difference = (
         abs(groq["STOP_LOSS"] - gemini["STOP_LOSS"])
@@ -738,11 +614,20 @@ def compare_trade_plans(groq_plan_text, gemini_plan_text):
 
 
 def call_gemini_analysis(system_prompt, user_prompt):
-    """Call Gemini through the streaming REST API with safe retries."""
+    """
+    Call Gemini through the streaming REST API with safe retries,
+    rotating across multiple configured API keys (e.g. separate
+    Google accounts, each with its own independent daily quota)
+    when the current key's quota is confirmed exhausted.
+    """
 
-    gemini_key = os.getenv("GEMINI_API_KEY")
+    gemini_keys = []
+    for env_name in ("GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"):
+        key_value = os.getenv(env_name)
+        if key_value:
+            gemini_keys.append((env_name, key_value))
 
-    if not gemini_key:
+    if not gemini_keys:
         raise RuntimeError("GEMINI_API_KEY is not loaded")
 
     url = (
@@ -762,193 +647,252 @@ def call_gemini_analysis(system_prompt, user_prompt):
         ]
     }
 
-    max_attempts = 4
-    retry_status_codes = {
-        429,
-        500,
-        502,
-        503,
-        504,
-    }
+    max_attempts = 5
+    retry_status_codes = {429, 500, 502, 503, 504}
+    quota_exhausted_marker = "exceeded your current quota"
 
     last_error = None
 
+    for key_index, (env_name, gemini_key) in enumerate(gemini_keys, start=1):
+
+        for attempt in range(1, max_attempts + 1):
+
+            response = None
+
+            print(
+                f"🌐 GEMINI PROVIDER | Key {key_index}/{len(gemini_keys)} "
+                f"({env_name}) | Attempt {attempt}/{max_attempts}"
+            )
+
+            try:
+                response = requests.post(
+                    url,
+                    params={"alt": "sse"},
+                    headers={
+                        "x-goog-api-key": gemini_key,
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                    stream=True,
+                    timeout=(15, 60),
+                )
+
+                if response.status_code >= 400:
+
+                    status_code = response.status_code
+
+                    if status_code in retry_status_codes:
+
+                        error_body = ""
+                        try:
+                            error_body = response.text[:300]
+                        except Exception:
+                            pass
+
+                        if error_body:
+                            print(f"   ↳ Gemini response: {error_body}")
+
+                        if (
+                            status_code == 429
+                            and quota_exhausted_marker in error_body.lower()
+                        ):
+                            raise RuntimeError("QUOTA_EXHAUSTED_ON_THIS_KEY")
+
+                        raise RuntimeError(f"RETRYABLE_HTTP_{status_code}")
+
+                    response.raise_for_status()
+
+                chunks = []
+
+                for line in response.iter_lines(decode_unicode=True):
+                    if not line:
+                        continue
+
+                    if not line.startswith("data:"):
+                        continue
+
+                    data_line = line[5:].strip()
+
+                    if not data_line:
+                        continue
+
+                    try:
+                        data = requests.models.complexjson.loads(data_line)
+                    except Exception:
+                        continue
+
+                    for candidate in data.get("candidates", []):
+                        content_block = candidate.get("content", {})
+
+                        for part in content_block.get("parts", []):
+                            chunk_text = part.get("text")
+
+                            if isinstance(chunk_text, str):
+                                chunks.append(chunk_text)
+
+                result = "".join(chunks).strip()
+
+                if not result:
+                    raise RuntimeError("Gemini returned no usable assessment")
+
+                print(
+                    f"✅ GEMINI PROVIDER | SUCCESS | Key {key_index} | "
+                    f"Attempt {attempt}"
+                )
+
+                return result
+
+            except requests.exceptions.Timeout as e:
+                last_error = f"TIMEOUT: {e}"
+
+            except requests.exceptions.ConnectionError as e:
+                last_error = f"CONNECTION_ERROR: {e}"
+
+            except requests.exceptions.HTTPError as e:
+                last_error = f"HTTP_ERROR: {e}"
+                print(f"❌ GEMINI PROVIDER FAILURE | {last_error}")
+                raise RuntimeError(f"GEMINI_PROVIDER_HTTP_ERROR: {e}") from e
+
+            except RuntimeError as e:
+                error_text = str(e)
+
+                if error_text == "QUOTA_EXHAUSTED_ON_THIS_KEY":
+                    last_error = f"quota exhausted on {env_name}"
+                    print(
+                        f"⚠️ GEMINI KEY {key_index} ({env_name}) QUOTA "
+                        "EXHAUSTED | Moving to next key immediately"
+                    )
+                    break
+
+                if (
+                    error_text.startswith("RETRYABLE_HTTP_")
+                    or error_text == "Gemini returned no usable assessment"
+                ):
+                    last_error = error_text
+                else:
+                    raise
+
+            except requests.exceptions.RequestException as e:
+                last_error = f"REQUEST_ERROR: {e}"
+
+            finally:
+                if response is not None:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+
+            if attempt < max_attempts:
+                wait_seconds = 2 ** attempt
+                print(f"⚠️ GEMINI TRANSIENT FAILURE | {last_error}")
+                print(f"🔄 Retrying in {wait_seconds}s...")
+                time.sleep(wait_seconds)
+
+        if key_index < len(gemini_keys):
+            print(
+                f"🔁 Switching from {env_name} to the next configured "
+                "Gemini key..."
+            )
+
+    print(
+        f"❌ GEMINI PROVIDER FAILURE | ALL {len(gemini_keys)} KEY(S) "
+        "EXHAUSTED"
+    )
+
+    raise RuntimeError(
+        f"GEMINI_PROVIDER_RETRY_EXHAUSTED: {last_error}"
+    )
+
+
+def call_openrouter_analysis(system_prompt, user_prompt):
+    """
+    Fallback provider used only when Groq or Gemini exhausts its own
+    retries. Mirrors the same 5-attempt retry/backoff logic so the
+    fallback is exactly as resilient as the primaries it replaces.
+    """
+
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+
+    if not openrouter_key:
+        raise RuntimeError("OPENROUTER_API_KEY is not loaded")
+
+    max_attempts = 5
+    retry_status_codes = {429, 500, 502, 503, 504}
+    last_error = None
+
     for attempt in range(1, max_attempts + 1):
-
-        response = None
-
-        print(
-            f"🌐 GEMINI PROVIDER | "
-            f"Attempt {attempt}/{max_attempts}"
-        )
+        print(f"🌐 OPENROUTER PROVIDER | Attempt {attempt}/{max_attempts}")
 
         try:
             response = requests.post(
-                url,
-                params={"alt": "sse"},
+                "https://openrouter.ai/api/v1/chat/completions",
                 headers={
-                    "x-goog-api-key": gemini_key,
+                    "Authorization": f"Bearer {openrouter_key}",
                     "Content-Type": "application/json",
                 },
-                json=payload,
-                stream=True,
-                timeout=(15, 60),
+                json={
+                    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.2,
+                    "max_completion_tokens": 600,
+                },
+                timeout=60,
             )
 
             if response.status_code >= 400:
-
                 status_code = response.status_code
 
                 if status_code in retry_status_codes:
-
-                    raise RuntimeError(
-                        f"RETRYABLE_HTTP_{status_code}"
-                    )
+                    raise RuntimeError(f"RETRYABLE_HTTP_{status_code}")
 
                 response.raise_for_status()
 
-            chunks = []
-
-            for line in response.iter_lines(
-                decode_unicode=True
-            ):
-                if not line:
-                    continue
-
-                if not line.startswith("data:"):
-                    continue
-
-                data_line = line[5:].strip()
-
-                if not data_line:
-                    continue
-
-                try:
-                    data = requests.models.complexjson.loads(
-                        data_line
-                    )
-                except Exception:
-                    continue
-
-                for candidate in data.get(
-                    "candidates",
-                    []
-                ):
-                    content = candidate.get(
-                        "content",
-                        {}
-                    )
-
-                    for part in content.get(
-                        "parts",
-                        []
-                    ):
-                        chunk_text = part.get("text")
-
-                        if isinstance(
-                            chunk_text,
-                            str
-                        ):
-                            chunks.append(
-                                chunk_text
-                            )
-
-            result = "".join(chunks).strip()
+            data = response.json()
+            result = (data["choices"][0]["message"].get("content") or "").strip()
 
             if not result:
+                raise RuntimeError("OpenRouter returned no usable assessment")
 
-                raise RuntimeError(
-                    "Gemini returned no usable assessment"
-                )
-
-            print(
-                f"✅ GEMINI PROVIDER | "
-                f"SUCCESS | Attempt {attempt}"
-            )
-
+            print(f"✅ OPENROUTER PROVIDER | SUCCESS | Attempt {attempt}")
             return result
 
         except requests.exceptions.Timeout as e:
-
-            last_error = (
-                f"TIMEOUT: {e}"
-            )
+            last_error = f"TIMEOUT: {e}"
 
         except requests.exceptions.ConnectionError as e:
-
-            last_error = (
-                f"CONNECTION_ERROR: {e}"
-            )
+            last_error = f"CONNECTION_ERROR: {e}"
 
         except requests.exceptions.HTTPError as e:
-
-            last_error = (
-                f"HTTP_ERROR: {e}"
-            )
-
-            print(
-                "❌ GEMINI PROVIDER FAILURE | "
-                f"{last_error}"
-            )
-
-            raise RuntimeError(
-                f"GEMINI_PROVIDER_HTTP_ERROR: {e}"
-            ) from e
+            last_error = f"HTTP_ERROR: {e}"
+            print(f"❌ OPENROUTER PROVIDER FAILURE | {last_error}")
+            raise RuntimeError(f"OPENROUTER_PROVIDER_HTTP_ERROR: {e}") from e
 
         except RuntimeError as e:
-
             error_text = str(e)
 
             if (
-                error_text.startswith(
-                    "RETRYABLE_HTTP_"
-                )
-                or error_text
-                == "Gemini returned no usable assessment"
+                error_text.startswith("RETRYABLE_HTTP_")
+                or error_text == "OpenRouter returned no usable assessment"
             ):
                 last_error = error_text
             else:
                 raise
 
         except requests.exceptions.RequestException as e:
-
-            last_error = (
-                f"REQUEST_ERROR: {e}"
-            )
-
-        finally:
-
-            if response is not None:
-                try:
-                    response.close()
-                except Exception:
-                    pass
+            last_error = f"REQUEST_ERROR: {e}"
 
         if attempt < max_attempts:
-
             wait_seconds = 2 ** attempt
-
-            print(
-                "⚠️ GEMINI TRANSIENT FAILURE | "
-                f"{last_error}"
-            )
-
-            print(
-                f"🔄 Retrying in "
-                f"{wait_seconds}s..."
-            )
-
+            print(f"⚠️ OPENROUTER TRANSIENT FAILURE | {last_error}")
+            print(f"🔄 Retrying in {wait_seconds}s...")
             time.sleep(wait_seconds)
 
-    print(
-        "❌ GEMINI PROVIDER FAILURE | "
-        f"EXHAUSTED AFTER {max_attempts} ATTEMPTS"
-    )
+    print(f"❌ OPENROUTER PROVIDER FAILURE | EXHAUSTED AFTER {max_attempts} ATTEMPTS")
+    raise RuntimeError(f"OPENROUTER_PROVIDER_RETRY_EXHAUSTED: {last_error}")
 
-    raise RuntimeError(
-        "GEMINI_PROVIDER_RETRY_EXHAUSTED: "
-        f"{last_error}"
-    )
 
 def parse_multi_ai_assessment(ai_assessment):
     """Parse and strictly validate one AI assessment for multi-AI comparison."""
@@ -1003,14 +947,14 @@ def parse_multi_ai_assessment(ai_assessment):
 
     direction = direction_match.group(1).strip().upper()
 
-    # HOLD is accepted here even though the AI prompt asks for
-    # BUY/SELL only (see DIRECTION: <BUY/SELL> in the prompt
+    # HOLD and NONE are accepted here even though the AI prompt asks
+    # for BUY/SELL only (see DIRECTION: <BUY/SELL> in the prompt
     # template) -- in practice a provider sometimes reflects the
-    # deterministic Stage 1 signal honestly when it's genuinely
-    # HOLD, and treating that as "invalid" mislabels a correct,
-    # neutral read as a consensus failure rather than what it
-    # actually is.
-    if direction not in {"BUY", "SELL", "HOLD"}:
+    # deterministic Stage 1 signal honestly: HOLD when Stage 1 says
+    # HOLD, NONE when Stage 1's signal was BLOCKED outright (nothing
+    # to take a direction on at all). Treating either as "invalid"
+    # mislabels a correct, neutral read as a consensus failure.
+    if direction not in {"BUY", "SELL", "HOLD", "NONE"}:
         return {
             "valid": False,
             "reason": f"Invalid DIRECTION: {direction}."
@@ -1073,7 +1017,7 @@ def compare_multi_ai_assessments(groq_assessment, gemini_assessment):
     groq_direction = groq.get("DIRECTION")
     gemini_direction = gemini.get("DIRECTION")
 
-    valid_directions = {"BUY", "SELL", "HOLD"}
+    valid_directions = {"BUY", "SELL", "HOLD", "NONE"}
 
     if (
         groq_direction not in valid_directions
@@ -1129,6 +1073,20 @@ def compare_multi_ai_assessments(groq_assessment, gemini_assessment):
             "gemini": gemini,
         }
 
+    # Both providers independently agree there's no direction to
+    # assess at all (Stage 1's signal was BLOCKED, not just HOLD).
+    # Same reasoning as the HOLD/HOLD branch above.
+    if groq_direction == "NONE" and gemini_direction == "NONE":
+        return {
+            "status": "AGREEMENT",
+            "action": "PAPER_HOLD",
+            "direction": "NONE",
+            "reason": "Groq and Gemini independently agree there is no direction to assess.",
+            "agreements": agreements,
+            "groq": groq,
+            "gemini": gemini,
+        }
+
     # BUY versus SELL disagreement — fail closed.
     return {
         "status": "CONFLICT",
@@ -1161,7 +1119,7 @@ def analyze_consensus_statistics():
     ]
 
     try:
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -1268,7 +1226,7 @@ def evaluate_provider_performance():
 
     try:
 
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -1505,7 +1463,7 @@ def ensure_paper_trade_plans_table():
     market prices. No real orders or funds are involved.
     """
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -1701,9 +1659,9 @@ def persist_directional_prediction(
     ensure_paper_trade_plans_table()
 
     created_at = datetime.now(timezone.utc)
-    expires_at = created_at + timedelta(hours=24)
+    expires_at = created_at + timedelta(hours=HORIZON_HOURS)
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
 
     try:
         cursor = conn.cursor()
@@ -1858,11 +1816,11 @@ def persist_consensus_paper_trade(
     symbol = symbol.upper()
 
     created_at = datetime.now(timezone.utc)
-    expires_at = created_at + timedelta(hours=24)
+    expires_at = created_at + timedelta(hours=HORIZON_HOURS)
 
     ensure_paper_trade_plans_table()
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
 
     try:
         cursor = conn.cursor()
@@ -1942,7 +1900,7 @@ def evaluate_expired_paper_predictions():
 
     ensure_paper_trade_plans_table()
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     results = []
@@ -2091,7 +2049,7 @@ def monitor_active_paper_trades():
 
     ensure_paper_trade_plans_table()
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     results = []
@@ -2403,11 +2361,29 @@ def monitor_active_paper_trades():
 # STAGE 7.6.8.1 — PAPER-TRADE FEEDBACK ENGINE
 # ============================================================
 
+
+_monitor_active_paper_trades_orig = monitor_active_paper_trades
+
+
+def monitor_active_paper_trades(*args, **kwargs):
+    result = _monitor_active_paper_trades_orig(*args, **kwargs)
+    try:
+        import hex_economics
+        hex_economics.apply()
+    except Exception as e:
+        print(f"futures economics skipped: {e}")
+    return result
+
+
 def _find_paper_database_path():
     """Locate the SQLite database containing paper_trade_plans."""
     import os
     import sqlite3
     from pathlib import Path
+
+    # A horizon profile must never fall back to scanning for the main DB.
+    if os.getenv("SENTINEL_DB"):
+        return os.getenv("SENTINEL_DB")
 
     env_candidates = [
         os.getenv("HEX_SENTINEL_DB"),
@@ -2964,7 +2940,7 @@ def calculate_paper_trade_analytics():
 
     ensure_paper_trade_plans_table()
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     try:
@@ -3260,7 +3236,7 @@ def ensure_provider_performance_audit_table():
 
     try:
 
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -3321,7 +3297,7 @@ def persist_provider_performance_audit():
 
     try:
 
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         inserted = 0
@@ -3467,7 +3443,7 @@ def print_provider_performance_audit():
 
     try:
 
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -3641,7 +3617,7 @@ def evaluate_consensus_outcomes():
 
     try:
 
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -3886,7 +3862,7 @@ def analyze_provider_agreement():
     total_records = 0
 
     try:
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -4021,7 +3997,7 @@ def analyze_symbol_consensus():
     ]
 
     try:
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -4185,7 +4161,7 @@ def analyze_consensus_trend():
     minimum_records = 4
 
     try:
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -4295,7 +4271,7 @@ def calculate_consensus_reliability():
 
     import sqlite3
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""
@@ -4789,7 +4765,7 @@ def print_consensus_trend():
 
 def ensure_ai_web_evidence_audit_table():
     """Create the audit table proving web evidence reached AI providers."""
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS ai_web_evidence_audit (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4842,7 +4818,7 @@ def audit_ai_web_evidence_delivery(provider, user_prompt):
         prompt.encode("utf-8")
     ).hexdigest()
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         conn.execute("""
             INSERT INTO ai_web_evidence_audit (
                 created_at,
@@ -4888,7 +4864,7 @@ def print_ai_web_evidence_audit():
     """Print recent provider web-evidence delivery audits."""
     ensure_ai_web_evidence_audit_table()
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -5061,9 +5037,70 @@ def print_paper_prediction_result(result, horizon="24H"):
 
 BATCH_PREDICT_DEFAULT = 5
 BATCH_PREDICT_MAX = 20
-BATCH_PREDICT_DELAY_SECONDS = 5
+BATCH_PREDICT_DELAY_SECONDS = 30
 
 BATCH_PREDICT_CATEGORIES = {"bullish", "bearish", "gainers", "losers"}
+
+
+_SPOT_TRADEABLE_SYMBOLS_CACHE = {"symbols": None, "fetched_at": 0}
+SPOT_TRADEABLE_SYMBOLS_CACHE_TTL_SECONDS = 3600  # exchangeInfo rarely changes
+
+
+def get_spot_tradeable_symbols():
+    """
+    Return the set of USDT-quoted symbols currently tradeable on
+    Binance Spot (status TRADING, isSpotTradingAllowed True).
+
+    Used to filter 'gainers'/'losers' batch candidates, which come
+    from the FUTURES 24hr ticker and can include perpetuals with no
+    corresponding spot market at all. Stage 1's candle download is
+    spot-only (api.binance.com/api/v3/klines), so a futures-only
+    symbol 400s there -- this filter catches that before Stage 1
+    ever runs, rather than burning a batch slot on a guaranteed
+    failure.
+
+    Cached for an hour since the tradeable symbol list rarely
+    changes within a session.
+    """
+
+    cached = _SPOT_TRADEABLE_SYMBOLS_CACHE
+
+    if (
+        cached["symbols"] is not None
+        and (time.time() - cached["fetched_at"])
+        < SPOT_TRADEABLE_SYMBOLS_CACHE_TTL_SECONDS
+    ):
+        return cached["symbols"]
+
+    response = requests.get(
+        f"{HEX_SPOT_API}/api/v3/exchangeInfo",
+        timeout=10,
+    )
+    response.raise_for_status()
+
+    excluded_base_assets = {
+        "USDT", "USDC", "USDP", "TUSD", "FDUSD", "DAI",
+        "BUSD", "RLUSD", "USD1", "PYUSD", "USDD", "EURI",
+    }
+
+    symbols = set()
+
+    for item in response.json().get("symbols", []):
+        if (
+            item.get("status") == "TRADING"
+            and item.get("quoteAsset") == "USDT"
+            and item.get("isSpotTradingAllowed") is True
+        ):
+            symbol = item.get("symbol", "")
+            base_asset = item.get("baseAsset", "").upper()
+
+            if symbol.endswith("USDT") and base_asset not in excluded_base_assets:
+                symbols.add(symbol)
+
+    _SPOT_TRADEABLE_SYMBOLS_CACHE["symbols"] = symbols
+    _SPOT_TRADEABLE_SYMBOLS_CACHE["fetched_at"] = time.time()
+
+    return symbols
 
 
 def get_batch_prediction_candidates(category, limit):
@@ -5089,8 +5126,26 @@ def get_batch_prediction_candidates(category, limit):
         return [item["symbol"] for item in pool[:limit]]
 
     if category in {"gainers", "losers"}:
-        movers = get_futures_movers(limit=limit)
+        # Pull a larger pool than requested, since some futures
+        # movers won't have a spot market at all (see
+        # get_spot_tradeable_symbols) and need to be filtered out --
+        # otherwise `limit` means "limit attempts", not "limit
+        # runnable predictions".
+        pool_size = min(max(limit * 4, 20), 50)
+        movers = get_futures_movers(limit=pool_size)
         pool = movers["gainers"] if category == "gainers" else movers["losers"]
+
+        try:
+            spot_symbols = get_spot_tradeable_symbols()
+        except Exception:
+            # Best-effort filter -- if the spot lookup itself fails,
+            # fall back to the unfiltered pool rather than blocking
+            # the whole batch on this enrichment step.
+            spot_symbols = None
+
+        if spot_symbols is not None:
+            pool = [item for item in pool if item["symbol"] in spot_symbols]
+
         return [item["symbol"] for item in pool[:limit]]
 
     raise ValueError(f"Unknown batch category: {category}")
@@ -5145,7 +5200,17 @@ def run_batch_predictions(category, limit):
             })
 
         except (Exception, SystemExit) as exc:
-            print(f"⚠️ {symbol} failed: {exc}")
+            if isinstance(exc, SystemExit):
+                # run_legacy_pipeline() raises SystemExit(<code>) on a
+                # Stage 1 failure -- str(exc) is just the bare exit
+                # code (e.g. "1"), not useful on its own. The real
+                # reason (market data error, timeout, etc.) was
+                # already printed to stdout above by Stage 1 itself.
+                error_text = "Stage 1 pipeline failed (see output above for details)"
+            else:
+                error_text = str(exc)
+
+            print(f"⚠️ {symbol} failed: {error_text}")
 
             results.append({
                 "symbol": symbol,
@@ -5153,7 +5218,7 @@ def run_batch_predictions(category, limit):
                 "final_action": None,
                 "risk_status": None,
                 "ok": False,
-                "error": str(exc),
+                "error": error_text,
             })
 
         if index < len(candidates):
@@ -5480,6 +5545,38 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
 
     print("=" * 60 + "\n")
 
+    spot_symbols = get_spot_tradeable_symbols()
+
+    if symbol not in spot_symbols:
+        futures_symbols = set()
+        try:
+            futures_response = requests.get(
+                "https://fapi.binance.com/fapi/v1/exchangeInfo",
+                timeout=15,
+            )
+            futures_response.raise_for_status()
+            futures_symbols = {
+                item["symbol"]
+                for item in futures_response.json().get("symbols", [])
+                if item.get("status") == "TRADING"
+                and item.get("quoteAsset") == "USDT"
+            }
+        except Exception:
+            pass  # if this check itself fails, the message below still applies
+
+        if symbol in futures_symbols:
+            print(
+                f"⚠️ {symbol} trades on Binance Futures only -- Stage 1's "
+                "backtest needs spot candle data, which this symbol doesn't have."
+            )
+        else:
+            print(
+                f"⚠️ {symbol} doesn't appear to be a tradeable USDT pair on "
+                "Binance Spot or Futures -- check the symbol and try again."
+            )
+
+        raise SystemExit(1)
+
     print("🔎 Running HEX SENTINEL Stage 1...\n")
 
     try:
@@ -5778,6 +5875,7 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
 
     groq_assessment = ""
     gemini_assessment = ""
+    openrouter_fallback_used = False
 
     try:
         groq_assessment = call_ai_provider(
@@ -5788,6 +5886,17 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
     except Exception as e:
         print(f"❌ Groq analysis provider error: {e}")
 
+        if not openrouter_fallback_used:
+            print("🔁 Falling back to OpenRouter in place of Groq...")
+            try:
+                groq_assessment = call_openrouter_analysis(
+                    system_prompt,
+                    user_prompt,
+                )
+                openrouter_fallback_used = True
+            except Exception as fallback_e:
+                print(f"❌ OpenRouter fallback (for Groq) error: {fallback_e}")
+
     try:
         gemini_assessment = call_ai_provider(
             "gemini",
@@ -5796,6 +5905,17 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
         )
     except Exception as e:
         print(f"❌ Gemini analysis provider error: {e}")
+
+        if not openrouter_fallback_used:
+            print("🔁 Falling back to OpenRouter in place of Gemini...")
+            try:
+                gemini_assessment = call_openrouter_analysis(
+                    system_prompt,
+                    user_prompt,
+                )
+                openrouter_fallback_used = True
+            except Exception as fallback_e:
+                print(f"❌ OpenRouter fallback (for Gemini) error: {fallback_e}")
 
     # Preserve one canonical assessment for the existing Stage 2.2 gate.
     # Consensus safety logic is applied separately below.
@@ -6105,7 +6225,7 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
     from datetime import datetime, timezone
 
     try:
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         cursor.executescript("""
@@ -6465,7 +6585,7 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
     # ============================================================
 
     try:
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -6647,7 +6767,14 @@ def stage2_risk_gate(status, signal, ai_assessment):
 # ============================================================
 
 def get_current_price(symbol):
-    """Fetch the latest public Binance USDⓈ-M Futures price."""
+    """
+    Fetch the latest public Binance USDⓈ-M Futures price, with retries.
+
+    Used in 6 places including the live TP/SL monitor -- previously a
+    single request with a 10s timeout and no retry at all, so any
+    transient network blip (as happened live on BNBUSDT) silently
+    skipped whatever evaluation depended on it.
+    """
     import requests
 
     symbol = str(symbol).strip().upper()
@@ -6655,16 +6782,48 @@ def get_current_price(symbol):
     if not symbol.endswith("USDT"):
         symbol += "USDT"
 
-    response = requests.get(
-        "https://fapi.binance.com/fapi/v1/ticker/price",
-        params={"symbol": symbol},
-        timeout=10,
-    )
+    max_attempts = 5
+    retry_status_codes = {429, 500, 502, 503, 504}
+    last_error = None
 
-    response.raise_for_status()
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = requests.get(
+                "https://fapi.binance.com/fapi/v1/ticker/price",
+                params={"symbol": symbol},
+                timeout=10,
+            )
 
-    data = response.json()
-    return float(data["price"])
+            if response.status_code in retry_status_codes:
+                raise RuntimeError(f"RETRYABLE_HTTP_{response.status_code}")
+
+            response.raise_for_status()
+
+            data = response.json()
+            return float(data["price"])
+
+        except (
+            requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError,
+        ) as e:
+            last_error = type(e).__name__
+
+        except RuntimeError as e:
+            if str(e).startswith("RETRYABLE_HTTP_"):
+                last_error = str(e)
+            else:
+                raise
+
+        if attempt < max_attempts:
+            wait_seconds = 2 ** attempt
+            print(
+                f"⚠️ get_current_price({symbol}) attempt "
+                f"{attempt}/{max_attempts} failed: {last_error}"
+            )
+            print(f"   Retrying in {wait_seconds}s...")
+            time.sleep(wait_seconds)
+
+    raise RuntimeError(f"GET_CURRENT_PRICE_RETRY_EXHAUSTED: {last_error}")
 
 
 
@@ -6716,7 +6875,7 @@ WEB_SOURCE_QUALITY = {
 def ensure_web_evidence_table():
     """Create the persistent advisory web-evidence store."""
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS web_intelligence_evidence (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -6861,7 +7020,7 @@ def _web_direction_conflict(directions):
 def ensure_web_evidence_corroboration_columns():
     """Migrate the web evidence table for publisher-level corroboration."""
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         cursor = conn.cursor()
 
         ensure_column(
@@ -7498,7 +7657,7 @@ def persist_web_evidence(evidence):
 
     added = 0
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         cursor = conn.cursor()
 
         for item in evidence:
@@ -7595,7 +7754,7 @@ def update_web_corroboration(symbol):
     ensure_web_evidence_table()
     ensure_web_evidence_corroboration_columns()
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -7741,7 +7900,7 @@ def build_web_evidence_package(symbol, limit=10):
 
     update_web_corroboration(symbol)
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -8309,7 +8468,7 @@ def get_decision_performance_analytics():
 
     import sqlite3
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     try:
@@ -8567,7 +8726,7 @@ def evaluate_pending_decisions(
     import sqlite3
     from datetime import datetime, timezone
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     try:
@@ -8777,7 +8936,7 @@ def calculate_memory_importance(
 def get_intelligent_memory(symbol=None, limit=5):
     """Retrieve the most relevant historical decisions."""
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     if symbol:
@@ -8909,7 +9068,7 @@ def analyze_memory_context(symbol, current_signal, current_risk_status=None):
 def get_memory_patterns(symbol=None, limit=5):
     """Consolidate repeated historical decisions into memory patterns."""
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     if symbol:
@@ -8967,7 +9126,7 @@ def get_memory_patterns(symbol=None, limit=5):
 def get_decision_history(symbol=None, limit=5):
     """Recall important recent agent decisions."""
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     if symbol:
@@ -9021,7 +9180,7 @@ def get_agent_status():
 
     # Strategy status — latest row in the lifecycle table, if any.
     try:
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
             "SELECT strategy_name, version, status FROM strategy_versions "
@@ -9040,7 +9199,7 @@ def get_agent_status():
 
     # Risk status — how many paper predictions are still being tracked.
     try:
-        conn = sqlite3.connect("sentinel.db")
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
             "SELECT COUNT(*) FROM paper_trade_plans "
@@ -10452,7 +10611,7 @@ def get_prediction_performance_report():
 
     ensure_paper_trade_plans_table()
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     try:
@@ -10646,7 +10805,7 @@ def print_prediction_performance_report():
     report = get_prediction_performance_report()
 
     print("\n" + "=" * 60)
-    print("📊 HEX SENTINEL — 24H PREDICTION PERFORMANCE")
+    print(f"📊 HEX SENTINEL — {HORIZON_LABEL} PREDICTION PERFORMANCE")
     print("=" * 60)
 
     print(
@@ -10749,7 +10908,7 @@ def get_paper_trade_outcome_report():
 
     ensure_paper_trade_plans_table()
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     try:
@@ -11036,9 +11195,9 @@ def demo_interface():
     print("  scan     → Binance-wide futures scanner")
     print("  history  → Recent audited decisions")
     print("  analyze  → Analyze the current market")
-    print("  predict <coin> [horizon] → 24H paper prediction")
+    print(f"  predict <coin> [horizon] → {HORIZON_LABEL} paper prediction")
     print("  predict batch <bullish|bearish|gainers|losers> [n] → batch predict (default 5)")
-    print("  performance → 24H prediction performance report")
+    print(f"  performance → {HORIZON_LABEL} prediction performance report")
     print("  trades   → Paper trade TP/SL outcomes (TP1/TP2/TP3/stop hits)")
     print("  cache    → API cache / rate-limit protection status")
     print("  cache clear → Clear the API response cache")
@@ -11059,6 +11218,26 @@ def demo_interface():
 
             if user_request != raw_request.lower():
                 print(f"🧭 Interpreting '{raw_request}' as '{user_request}'")
+
+            # ========================================================
+            # HELP / COMMANDS LIST -- redisplay without restarting
+            # ========================================================
+            if user_request in {"help", "commands", "?"}:
+                print("\nAvailable commands:")
+                print("  status   → Current Sentinel safety state (now live, not fixed text)")
+                print("  market   → Scan bullish/bearish Binance candidates")
+                print("  scan     → Binance-wide futures scanner")
+                print("  history  → Recent audited decisions")
+                print("  analyze  → Analyze the current market")
+                print(f"  predict <coin> [horizon] → {HORIZON_LABEL} paper prediction")
+                print("  predict batch <bullish|bearish|gainers|losers> [n] → batch predict (default 5)")
+                print(f"  performance → {HORIZON_LABEL} prediction performance report")
+                print("  trades   → Paper trade TP/SL outcomes (TP1/TP2/TP3/stop hits)")
+                print("  cache    → API cache / rate-limit protection status")
+                print("  cache clear → Clear the API response cache")
+                print("  help / commands → Show this list again")
+                print("  quit     → Exit demo")
+                continue
 
             # Deterministic interactive market scanner.
             if user_request == "market":
@@ -11207,11 +11386,12 @@ def demo_interface():
 
                 horizon = parts[2].lower() if len(parts) == 3 else "24h"
 
-                # 24H is the only horizon currently enabled.
-                if horizon != "24h":
-                    print(f"\n⚠️ Horizon '{horizon}' is not enabled yet.")
-                    print("Currently enabled: 24h")
-                    print("Future horizons require horizon-specific evidence.")
+                # Each horizon runs as its own profile (own database and
+                # candle interval) started with hex.py. "24h" is the default.
+                if horizon not in ("24h", HORIZON_LABEL.lower()):
+                    print(f"\n⚠️ Horizon '{horizon}' is not enabled in this session.")
+                    print(f"This session runs the {HORIZON_LABEL} profile.")
+                    print("Start another one with: python hex.py <4h|12h|24h|48h|72h>")
                     print("🔒 Live execution: BLOCKED")
                     continue
 
@@ -11221,9 +11401,9 @@ def demo_interface():
                     print("🔒 Live execution: BLOCKED")
                     continue
 
-                print("\n" + header("HEX SENTINEL — 24H PAPER PREDICTION", "🔮"))
+                print("\n" + header(f"HEX SENTINEL — {HORIZON_LABEL} PAPER PREDICTION", "🔮"))
                 print(kv("Symbol", symbol))
-                print(f"{'Horizon:':<18}24H")
+                print(f"{'Horizon:':<18}{HORIZON_LABEL}")
                 print(f"{'Market data:':<18}{c('LIVE BINANCE MARKET', CYAN)}")
                 print(f"{'Execution:':<18}{c('PAPER ONLY', YELLOW)}")
                 print(live_execution_line("BLOCKED"))
@@ -11232,12 +11412,12 @@ def demo_interface():
                 try:
                     prediction_result = run_legacy_pipeline(symbol)
 
-                    print("\n" + header("24H PAPER PREDICTION PIPELINE COMPLETE", "📋"))
+                    print("\n" + header(f"{HORIZON_LABEL} PAPER PREDICTION PIPELINE COMPLETE", "📋"))
                     print(kv("Symbol", symbol))
-                    print(f"{'Horizon:':<18}24H")
+                    print(f"{'Horizon:':<18}{HORIZON_LABEL}")
                     print_paper_prediction_result(
                         prediction_result,
-                        horizon="24H"
+                        horizon=HORIZON_LABEL
                     )
                     print(live_execution_line("BLOCKED"))
                     print(c("=" * 60, CYAN))
@@ -11518,7 +11698,7 @@ import sentinel_stage1
 def ensure_strategy_versions_table():
     """Create the strategy lifecycle table if it does not already exist."""
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS strategy_versions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -11539,7 +11719,7 @@ def register_strategy_version(strategy_name="EMA_RSI", version="v1", status="WAT
 
     ensure_strategy_versions_table()
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         conn.execute("""
             INSERT INTO strategy_versions
             (strategy_name, version, status, reason)
@@ -11564,7 +11744,7 @@ def get_previous_lifecycle_state(strategy_name, version):
     """Return the current persisted lifecycle state before a new evaluation."""
     ensure_strategy_versions_table()
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         row = conn.execute("""
             SELECT status
             FROM strategy_versions
@@ -11678,7 +11858,7 @@ def update_strategy_lifecycle(strategy_name, version, status, reason):
             "error": f"Invalid lifecycle state: {status}"
         }
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         conn.execute("""
             INSERT INTO strategy_versions
             (strategy_name, version, status, reason)
@@ -11716,7 +11896,7 @@ def get_strategy_lifecycle(strategy_name=None):
 
     query += " ORDER BY updated_at DESC"
 
-    with sqlite3.connect("sentinel.db") as conn:
+    with sqlite3.connect(SENTINEL_DB_PATH) as conn:
         rows = conn.execute(query, params).fetchall()
 
     return [
@@ -11907,7 +12087,7 @@ def audit_final_decision(decision):
     import sqlite3
     from datetime import datetime, timezone
 
-    conn = sqlite3.connect("sentinel.db")
+    conn = sqlite3.connect(SENTINEL_DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("""

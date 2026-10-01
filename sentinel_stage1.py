@@ -16,10 +16,10 @@ from sentinel_theme import format_price
 # evaluates the strategy, and records paper signals.
 # ============================================================
 
-DB_FILE = "sentinel.db"
+DB_FILE = os.getenv("SENTINEL_DB", "sentinel.db")
 
 SYMBOL = os.getenv("SENTINEL_SYMBOL", "BTCUSDT").upper()
-INTERVAL = "1h"
+INTERVAL = os.getenv("SENTINEL_INTERVAL", "1h")
 
 # Number of historical candles to download
 CANDLES = 5000
@@ -147,7 +147,9 @@ def fetch_binance_data(symbol, interval, limit):
 
         # STAGE 7.6.8.4 — BINANCE MARKET-DATA RETRY HARDENING
         response = None
-        max_attempts = 3
+        max_attempts = 5
+        retry_status_codes = {429, 500, 502, 503, 504}
+        last_error = None
 
         for attempt in range(1, max_attempts + 1):
             try:
@@ -156,6 +158,16 @@ def fetch_binance_data(symbol, interval, limit):
                     params=params,
                     timeout=15
                 )
+
+                if response.status_code in retry_status_codes:
+                    raise RuntimeError(
+                        f"RETRYABLE_HTTP_{response.status_code}"
+                    )
+
+                # A non-retryable status (e.g. 400 for an invalid or
+                # delisted symbol) raises here and is NOT caught below,
+                # so it fails immediately instead of burning through
+                # retries that can never succeed.
                 response.raise_for_status()
                 break
 
@@ -163,24 +175,34 @@ def fetch_binance_data(symbol, interval, limit):
                 requests.exceptions.Timeout,
                 requests.exceptions.ConnectionError
             ) as e:
-                if attempt == max_attempts:
-                    print(
-                        f"❌ BINANCE MARKET DATA FAILED "
-                        f"AFTER {max_attempts} ATTEMPTS"
-                    )
+                last_error = type(e).__name__
+
+            except RuntimeError as e:
+                if str(e).startswith("RETRYABLE_HTTP_"):
+                    last_error = str(e)
+                else:
                     raise
 
-                wait_seconds = 2 ** (attempt - 1)
-
+            if attempt == max_attempts:
                 print(
-                    f"⚠️ Binance market-data attempt "
-                    f"{attempt}/{max_attempts} failed: {type(e).__name__}"
+                    f"❌ BINANCE MARKET DATA FAILED "
+                    f"AFTER {max_attempts} ATTEMPTS"
                 )
-                print(
-                    f"   Retrying in {wait_seconds}s..."
+                raise RuntimeError(
+                    f"BINANCE_MARKET_DATA_RETRY_EXHAUSTED: {last_error}"
                 )
 
-                time.sleep(wait_seconds)
+            wait_seconds = 2 ** (attempt - 1)
+
+            print(
+                f"⚠️ Binance market-data attempt "
+                f"{attempt}/{max_attempts} failed: {last_error}"
+            )
+            print(
+                f"   Retrying in {wait_seconds}s..."
+            )
+
+            time.sleep(wait_seconds)
 
         batch = response.json()
 

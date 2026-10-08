@@ -176,6 +176,74 @@ def plan_chart(pid, prof="24h"):
     return path
 
 
+TERM_WORDS = ("term", "text", "terminal", "txt", "tty")
+
+
+def term_chart(coin, iv="1h", lim=150, lv=None):
+    import shutil as _sh
+    G, R, Y, B, D, C, X = "\033[92m", "\033[91m", "\033[93m", "\033[94m", "\033[2m", "\033[96m", "\033[0m"
+    lv = lv or {}
+    sym = coin.upper().replace("/", "")
+    if not sym.endswith("USDT"):
+        sym += "USDT"
+    src, rows = fetch(sym, iv, lim)
+    if not rows:
+        print(R + "no data for that coin (spot and futures both failed)" + X)
+        return
+    closes = [r[4] for r in rows]
+    e20, e50 = ema(closes, 20), ema(closes, 50)
+    cols, lines = _sh.get_terminal_size()
+    nc = max(20, min(len(rows), cols - 12))
+    rows, e20, e50 = rows[-nc:], e20[-nc:], e50[-nc:]
+    pr, vr = max(10, min(30, lines - 10)), 3
+    vals = [r[2] for r in rows] + [r[3] for r in rows] + list(lv.values())
+    hi, lo = max(vals), min(vals)
+    pad = (hi - lo) * 0.03 or 1.0
+    hi, lo = hi + pad, lo - pad
+    row = lambda p: min(pr - 1, max(0, int(round((hi - p) / (hi - lo) * (pr - 1)))))
+    fmt = lambda p: ("%.6g" % p) if p < 1 else ("%.2f" % p)
+    g = [[(" ", None)] * nc for _ in range(pr)]
+    for nm, v in lv.items():
+        col = R if nm.lower().startswith("stop") else (G if nm.lower().startswith("tp") else C)
+        for j in range(nc):
+            g[row(v)][j] = ("┄", col)
+    for j, (t, o, h, l, c, v) in enumerate(rows):
+        col = G if c >= o else R
+        for r in range(row(h), row(l) + 1):
+            g[r][j] = ("│", col)
+        rt, rb = row(max(o, c)), row(min(o, c))
+        ch = "█" if rt != rb else "─"
+        for r in range(rt, rb + 1):
+            g[r][j] = (ch, col)
+    for series, col in ((e50, B), (e20, Y)):
+        for j, v in enumerate(series):
+            r = row(v)
+            if g[r][j][0] in (" ", "┄"):
+                g[r][j] = ("·", col)
+    lastr = row(rows[-1][4])
+    vmax = max(r[5] for r in rows) or 1.0
+    vg = [[(" ", None)] * nc for _ in range(vr)]
+    for j, r in enumerate(rows):
+        tot = int(round(r[5] / vmax * vr * 8))
+        col = G if r[4] >= r[1] else R
+        for k in range(vr):
+            vg[vr - 1 - k][j] = (" ▁▂▃▄▅▆▇█"[max(0, min(8, tot - k * 8))], col)
+    paint = lambda cells: "".join((col + ch + X) if col else ch for ch, col in cells)
+    print()
+    for r in range(pr):
+        lab = fmt(hi - r * (hi - lo) / (pr - 1)) if (r % 5 == 0 or r == lastr) else ""
+        lab = (Y + lab.rjust(9) + X) if r == lastr else (D + lab.rjust(9) + X)
+        print(lab + "│" + paint(g[r]))
+    for k in range(vr):
+        print(D + ("volume".rjust(9) if k == 0 else " " * 9) + X + "│" + paint(vg[k]))
+    chg = (rows[-1][4] / rows[0][4] - 1) * 100
+    t0 = time.strftime("%m-%d %H:%M", time.gmtime(rows[0][0]))
+    t1 = time.strftime("%m-%d %H:%M", time.gmtime(rows[-1][0]))
+    print(f"{C}{sym} {iv} ({src}){X}  {t0} -> {t1} UTC  last {fmt(rows[-1][4])}  "
+          f"{(G if chg >= 0 else R)}{chg:+.2f}%{X}")
+    print(f"{D}{nc} candles   {Y}· EMA20{X}{D}   {B}· EMA50{X}{D}   dashed = your levels{X}")
+
+
 def main(a):
     if not a:
         print("usage: chart <coin> [interval e.g. 1h/4h/15m] [number of candles e.g. 100] [entry=.. tp1=.. tp2=.. tp3=.. stop=..]")
@@ -187,7 +255,12 @@ def main(a):
         if p:
             print("\033[96msaved " + p + "\033[0m" + ("  (opened)" if open_html(p) else "  (open with: termux-open " + p + ")"))
         return
+    term = any(x.lower() in TERM_WORDS for x in a)
+    a = [x for x in a if x.lower() not in TERM_WORDS]
     pos = [x for x in a if "=" not in x]
+    if not pos:
+        print("usage: chart <coin> [term] [interval] [number of candles]")
+        return
     lv = {k: float(v) for k, v in (x.split("=", 1) for x in a if "=" in x)}
     iv, lim = "1h", 150
     for w in pos[1:]:
@@ -197,6 +270,9 @@ def main(a):
             lim = max(20, min(1000, int(w)))
         else:
             iv = w.lower()
+    if term:
+        term_chart(pos[0], iv, lim, lv)
+        return
     p = make(pos[0], iv, lim, lv)
     if not p:
         print("\033[91mno data for that coin (spot and futures both failed)\033[0m")

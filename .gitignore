@@ -46,3 +46,6 @@ datasets/
 audit_baseline/
 claude_audit/
 hex_audit.txt
+*.db
+*.bak*
+lab_charts/

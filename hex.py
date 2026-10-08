@@ -21,6 +21,10 @@ PROFILES = {
 
 def main():
     key = (sys.argv[1] if len(sys.argv) > 1 else "24h").lower()
+    if key == "lab":
+        # Market Lab: separate program and lab.db, no Sentinel profile or DB is set
+        _lab = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lab_engine.py")
+        os.execv(sys.executable, [sys.executable, _lab] + sys.argv[2:])
 
     if key not in PROFILES:
         print(f"Unknown horizon '{key}'. Choose one of: " + ", ".join(PROFILES))

@@ -4,6 +4,11 @@ from dotenv import load_dotenv
 load_dotenv()
 import os
 import subprocess
+try:
+    import hex_colors
+    hex_colors.install()
+except Exception:
+    pass
 import requests
 import sqlite3
 import re
@@ -18,6 +23,43 @@ GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 # 24h / sentinel.db / 1h-candle behaviour exactly as before)
 # ============================================================
 SENTINEL_DB_PATH = os.getenv("SENTINEL_DB", "sentinel.db")
+
+
+def _ensure_schema(path):
+    """Create any tables/indexes missing from a profile DB, copying
+    definitions (no rows) from the base sentinel.db. Never touches data."""
+    try:
+        import sqlite3
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sentinel.db")
+        if os.path.abspath(path) == base or not os.path.exists(base):
+            return
+        src_conn = sqlite3.connect(base)
+        rows = src_conn.execute(
+            "SELECT type, name, sql FROM sqlite_master "
+            "WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' "
+            "ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END"
+        ).fetchall()
+        src_conn.close()
+        dst = sqlite3.connect(path)
+        have = {r[0] for r in dst.execute("SELECT name FROM sqlite_master")}
+        made = []
+        for _type, name, sql in rows:
+            if name in have:
+                continue
+            try:
+                dst.execute(sql)
+                made.append(name)
+            except Exception:
+                pass
+        dst.commit()
+        dst.close()
+        if made:
+            print("\033[96m[schema] " + path + ": created " + ", ".join(made) + "\033[0m")
+    except Exception as e:
+        print("[schema] skipped: " + str(e))
+
+
+_ensure_schema(SENTINEL_DB_PATH)
 try:
     HORIZON_HOURS = int(os.getenv("SENTINEL_HORIZON_HOURS", "24"))
     if HORIZON_HOURS <= 0:
@@ -632,7 +674,7 @@ def call_gemini_analysis(system_prompt, user_prompt):
 
     url = (
         "https://generativelanguage.googleapis.com/v1beta/"
-        "models/gemini-3.6-flash:streamGenerateContent"
+        "models/gemini-3.1-flash-lite:streamGenerateContent"
     )
 
     payload = {
@@ -2039,9 +2081,116 @@ def get_paper_monitor_price(
     )
 
 
+def fetch_monitor_candles(symbol, start_iso, end_dt):
+    """
+    Fetch real 1h candles between start_iso and end_dt for TP/SL monitoring.
+
+    This is what actually fixes the "TP1 hit: 0" problem: it looks at the
+    whole price path since the trade opened, not just the single instant
+    the app happens to be running right now. Up to 1000 candles in one
+    call, which comfortably covers every horizon profile (4h to 72h).
+    """
+
+    start_dt = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+
+    response = requests.get(
+        "https://api.binance.com/api/v3/klines",
+        params={
+            "symbol": symbol,
+            "interval": "1h",
+            "startTime": int(start_dt.timestamp() * 1000),
+            "endTime": int(end_dt.timestamp() * 1000),
+            "limit": 1000,
+        },
+        timeout=15,
+    )
+    response.raise_for_status()
+
+    candles = []
+    for row in response.json():
+        candles.append({
+            "close_time": datetime.fromtimestamp(row[6] / 1000, tz=timezone.utc),
+            "high": float(row[2]),
+            "low": float(row[3]),
+        })
+
+    return candles
+
+
+def scan_trade_path_for_resolution(
+    direction,
+    stop_loss,
+    tp1,
+    tp2,
+    tp3,
+    candles,
+    tp1_already_hit,
+    tp2_already_hit,
+):
+    """
+    Walk the real candle history in chronological order and find the
+    FIRST point stop-loss or each take-profit level was actually crossed.
+
+    If a single candle's range crosses both the stop and a take-profit
+    level, the stop is treated as happening first -- a deliberately
+    conservative assumption so this can never overstate a result, the
+    same convention real backtest simulators use for this exact
+    ambiguity (one candle can't tell you which was touched first).
+
+    Returns a dict of what to apply; any hit_at left as None means
+    "no new information this scan" (caller keeps the existing value).
+    """
+
+    outcome = {
+        "stop_hit": False,
+        "stop_price": None,
+        "stop_hit_at": None,
+        "tp1_hit_at": None,
+        "tp2_hit_at": None,
+        "tp3_hit_at": None,
+        "tp3_full_target_hit": False,
+    }
+
+    for candle in candles:
+
+        if direction == "BUY":
+            stop_hit_now = candle["low"] <= stop_loss
+        else:
+            stop_hit_now = candle["high"] >= stop_loss
+
+        if stop_hit_now:
+            outcome["stop_hit"] = True
+            outcome["stop_price"] = stop_loss
+            outcome["stop_hit_at"] = candle["close_time"].isoformat()
+            break
+
+        if direction == "BUY":
+            tp1_now = candle["high"] >= tp1
+            tp2_now = candle["high"] >= tp2
+            tp3_now = candle["high"] >= tp3
+        else:
+            tp1_now = candle["low"] <= tp1
+            tp2_now = candle["low"] <= tp2
+            tp3_now = candle["low"] <= tp3
+
+        if tp1_now and not tp1_already_hit and outcome["tp1_hit_at"] is None:
+            outcome["tp1_hit_at"] = candle["close_time"].isoformat()
+
+        if tp2_now and not tp2_already_hit and outcome["tp2_hit_at"] is None:
+            outcome["tp2_hit_at"] = candle["close_time"].isoformat()
+
+        if tp3_now:
+            outcome["tp3_hit_at"] = candle["close_time"].isoformat()
+            outcome["tp3_full_target_hit"] = True
+            break
+
+    return outcome
+
+
 def monitor_active_paper_trades():
     """
-    Monitor all ACTIVE paper trades using live market prices.
+    Monitor all ACTIVE paper trades against their REAL price history
+    since they opened, not just the current instant.
 
     This function is simulation-only.
     It never places exchange orders or accesses account balances.
@@ -2116,13 +2265,55 @@ def monitor_active_paper_trades():
                     trade_id
                 ))
 
-                # --------------------------------------------
-                # EXPIRE OLD PAPER TRADES
-                # --------------------------------------------
-
                 expiry_time = datetime.fromisoformat(
                     expires_at.replace("Z", "+00:00")
                 )
+                scan_end = min(now, expiry_time)
+
+                try:
+                    candles = fetch_monitor_candles(symbol, created_at, scan_end)
+                except Exception:
+                    candles = []
+
+                path = scan_trade_path_for_resolution(
+                    direction, stop_loss, tp1, tp2, tp3, candles,
+                    tp1_already_hit=(tp1_hit_at is not None),
+                    tp2_already_hit=(tp2_hit_at is not None),
+                )
+
+                if path["tp1_hit_at"]:
+                    cursor.execute(
+                        "UPDATE paper_trade_plans SET tp1_hit_at = ? WHERE id = ?",
+                        (path["tp1_hit_at"], trade_id),
+                    )
+                    results.append({"id": trade_id, "symbol": symbol, "event": "TP1_HIT", "price": tp1})
+
+                if path["tp2_hit_at"]:
+                    cursor.execute(
+                        "UPDATE paper_trade_plans SET tp2_hit_at = ? WHERE id = ?",
+                        (path["tp2_hit_at"], trade_id),
+                    )
+                    results.append({"id": trade_id, "symbol": symbol, "event": "TP2_HIT", "price": tp2})
+
+                if path["stop_hit"]:
+                    cursor.execute("""
+                        UPDATE paper_trade_plans
+                        SET status = 'RESOLVED', outcome = 'STOP_LOSS',
+                            trade_outcome = 'STOP_LOSS', exit_price = ?, resolved_at = ?
+                        WHERE id = ?
+                    """, (path["stop_price"], path["stop_hit_at"], trade_id))
+                    results.append({"id": trade_id, "symbol": symbol, "event": "STOP_LOSS", "price": path["stop_price"]})
+                    continue
+
+                if path["tp3_full_target_hit"]:
+                    cursor.execute("""
+                        UPDATE paper_trade_plans
+                        SET tp3_hit_at = ?, status = 'RESOLVED', outcome = 'TP3',
+                            trade_outcome = 'TP3', exit_price = ?, resolved_at = ?
+                        WHERE id = ?
+                    """, (path["tp3_hit_at"], tp3, path["tp3_hit_at"], trade_id))
+                    results.append({"id": trade_id, "symbol": symbol, "event": "TP3_HIT", "price": tp3})
+                    continue
 
                 if now >= expiry_time:
 
@@ -2167,131 +2358,6 @@ def monitor_active_paper_trades():
                         "price_change_pct": price_change_pct,
                         "feedback_score": feedback_score
                     })
-
-                    continue
-
-
-                # --------------------------------------------
-                # STOP LOSS DETECTION
-                # --------------------------------------------
-
-                stop_hit = False
-
-                if direction == "BUY":
-                    stop_hit = current_price <= stop_loss
-
-                elif direction == "SELL":
-                    stop_hit = current_price >= stop_loss
-
-
-                if stop_hit:
-
-                    cursor.execute("""
-                        UPDATE paper_trade_plans
-                        SET
-                            status = 'RESOLVED',
-                            outcome = 'STOP_LOSS',
-                            trade_outcome = 'STOP_LOSS',
-                            exit_price = ?,
-                            resolved_at = ?
-                        WHERE id = ?
-                    """, (
-                        current_price,
-                        now.isoformat(),
-                        trade_id
-                    ))
-
-                    results.append({
-                        "id": trade_id,
-                        "symbol": symbol,
-                        "event": "STOP_LOSS",
-                        "price": current_price
-                    })
-
-                    continue
-
-
-                # --------------------------------------------
-                # TAKE PROFIT DETECTION
-                # --------------------------------------------
-
-                if direction == "BUY":
-
-                    tp1_hit = current_price >= tp1
-                    tp2_hit = current_price >= tp2
-                    tp3_hit = current_price >= tp3
-
-                else:
-
-                    tp1_hit = current_price <= tp1
-                    tp2_hit = current_price <= tp2
-                    tp3_hit = current_price <= tp3
-
-
-                if tp1_hit and tp1_hit_at is None:
-
-                    cursor.execute("""
-                        UPDATE paper_trade_plans
-                        SET tp1_hit_at = ?
-                        WHERE id = ?
-                    """, (
-                        now.isoformat(),
-                        trade_id
-                    ))
-
-                    results.append({
-                        "id": trade_id,
-                        "symbol": symbol,
-                        "event": "TP1_HIT",
-                        "price": current_price
-                    })
-
-
-                if tp2_hit and tp2_hit_at is None:
-
-                    cursor.execute("""
-                        UPDATE paper_trade_plans
-                        SET tp2_hit_at = ?
-                        WHERE id = ?
-                    """, (
-                        now.isoformat(),
-                        trade_id
-                    ))
-
-                    results.append({
-                        "id": trade_id,
-                        "symbol": symbol,
-                        "event": "TP2_HIT",
-                        "price": current_price
-                    })
-
-
-                if tp3_hit and tp3_hit_at is None:
-
-                    cursor.execute("""
-                        UPDATE paper_trade_plans
-                        SET
-                            tp3_hit_at = ?,
-                            status = 'RESOLVED',
-                            outcome = 'TP3',
-                            trade_outcome = 'TP3',
-                            exit_price = ?,
-                            resolved_at = ?
-                        WHERE id = ?
-                    """, (
-                        now.isoformat(),
-                        current_price,
-                        now.isoformat(),
-                        trade_id
-                    ))
-
-                    results.append({
-                        "id": trade_id,
-                        "symbol": symbol,
-                        "event": "TP3_HIT",
-                        "price": current_price
-                    })
-
 
             except Exception as e:
 
@@ -5565,17 +5631,14 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
             pass  # if this check itself fails, the message below still applies
 
         if symbol in futures_symbols:
-            print(
-                f"⚠️ {symbol} trades on Binance Futures only -- Stage 1's "
-                "backtest needs spot candle data, which this symbol doesn't have."
-            )
+            print(f"ℹ️ {symbol} trades on Binance Futures only -- using futures candles for Stage 1.")
         else:
             print(
                 f"⚠️ {symbol} doesn't appear to be a tradeable USDT pair on "
                 "Binance Spot or Futures -- check the symbol and try again."
             )
 
-        raise SystemExit(1)
+            raise SystemExit(1)
 
     print("🔎 Running HEX SENTINEL Stage 1...\n")
 
@@ -10586,6 +10649,10 @@ def normalize_command(user_input):
     if command in commands:
         return command
 
+    # Only fuzzy-correct single-word typos; keep arguments like "analyze btc".
+    if " " in command:
+        return command
+
     matches = get_close_matches(command, commands, n=1, cutoff=0.70)
     if matches:
         return matches[0]
@@ -10792,6 +10859,44 @@ def get_prediction_performance_report():
 
     finally:
         conn.close()
+
+
+def print_all_profile_performance():
+    """Run the performance report for every profile database (24h, 48h, ...)."""
+    import glob as _glob
+    import re as _re
+
+    global SENTINEL_DB_PATH, HORIZON_LABEL, HORIZON_HOURS
+    cur = os.path.abspath(SENTINEL_DB_PATH)
+    profiles = []
+    for path in sorted(_glob.glob(os.path.join(os.path.dirname(cur), "sentinel*.db"))):
+        m = _re.fullmatch(r"sentinel(?:_(\d+)h)?\.db", os.path.basename(path))
+        if m:
+            profiles.append((path, int(m.group(1) or 24)))
+    if cur not in [p for p, _ in profiles]:
+        profiles.append((cur, HORIZON_HOURS))
+    profiles.sort(key=lambda x: x[1])
+    if len(profiles) < 2:
+        print_prediction_performance_report()
+        return
+
+    saved = (SENTINEL_DB_PATH, HORIZON_LABEL, HORIZON_HOURS, os.environ.get("SENTINEL_DB"))
+    try:
+        for path, hours in profiles:
+            SENTINEL_DB_PATH = path
+            HORIZON_HOURS = hours
+            HORIZON_LABEL = f"{hours}H"
+            os.environ["SENTINEL_DB"] = path
+            try:
+                print_prediction_performance_report()
+            except Exception as e:
+                print(f"\n⚠️ {hours}H performance report failed: {e}")
+    finally:
+        SENTINEL_DB_PATH, HORIZON_LABEL, HORIZON_HOURS = saved[0], saved[1], saved[2]
+        if saved[3] is None:
+            os.environ.pop("SENTINEL_DB", None)
+        else:
+            os.environ["SENTINEL_DB"] = saved[3]
 
 
 def print_prediction_performance_report():
@@ -11201,6 +11306,9 @@ def demo_interface():
     print("  trades   → Paper trade TP/SL outcomes (TP1/TP2/TP3/stop hits)")
     print("  cache    → API cache / rate-limit protection status")
     print("  cache clear → Clear the API response cache")
+    print("  rating   → Composite rating log (rating performance [hours])")
+    print("  lab play <set> [each] → Play the prediction game (lab mine <set> = your record)")
+    print("  lab list|report|summary|verify <set> → Market Lab results (own lab.db)")
     print("  quit     → Exit demo")
 
     while True:
@@ -11235,6 +11343,8 @@ def demo_interface():
                 print("  trades   → Paper trade TP/SL outcomes (TP1/TP2/TP3/stop hits)")
                 print("  cache    → API cache / rate-limit protection status")
                 print("  cache clear → Clear the API response cache")
+                print("  lab play <set> [each] → Play the prediction game (lab mine <set> = your record)")
+                print("  lab list|report|summary|verify <set> → Market Lab results (own lab.db)")
                 print("  help / commands → Show this list again")
                 print("  quit     → Exit demo")
                 continue
@@ -11254,7 +11364,7 @@ def demo_interface():
                 "prediction stats"
             }:
                 try:
-                    print_prediction_performance_report()
+                    print_all_profile_performance()
                 except Exception as performance_error:
                     print(
                         "\n⚠️ Performance report failed: "
@@ -11298,6 +11408,28 @@ def demo_interface():
             # since "predict batch ..." also starts with "predict "
             # and would otherwise be swallowed by that handler's
             # <coin> parsing and rejected as bad usage.
+            if user_request == "lab" or user_request.startswith("lab "):
+                try:
+                    import subprocess as _sp, sys as _sys
+                    _lab = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lab_engine.py")
+                    _sp.run([_sys.executable, _lab] + user_request.split()[1:])
+                except Exception as e:
+                    print("lab command error: " + str(e))
+                continue
+
+            if user_request == "rating" or user_request.startswith("rating "):
+                try:
+                    import rating_report
+                    rparts = user_request.split()
+                    if len(rparts) > 1 and rparts[1] == "performance":
+                        hrs = int(rparts[2]) if len(rparts) > 2 else 24
+                        rating_report.rating_performance(hrs)
+                    else:
+                        rating_report.show_ratings()
+                except Exception as e:
+                    print("rating command error: " + str(e))
+                continue
+
             if user_request.startswith("predict batch"):
                 batch_parts = user_request.split()
 

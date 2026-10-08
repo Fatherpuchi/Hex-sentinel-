@@ -49,3 +49,4 @@ hex_audit.txt
 *.db
 *.bak*
 lab_charts/
+charts/

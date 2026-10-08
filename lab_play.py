@@ -1,3 +1,4 @@
+import shutil
 import os, sys, re, time, math, select, shutil
 from datetime import datetime, timezone
 import lab_engine as E
@@ -168,7 +169,23 @@ svg.addEventListener('pointerleave',hide);
     return path
 
 
+def _share(path):
+    """Copy to shared Downloads so the phone's browser can read it."""
+    base = os.path.expanduser("~/storage/downloads")
+    if not os.path.isdir(base):
+        return path
+    try:
+        d = os.path.join(base, "hex_charts")
+        os.makedirs(d, exist_ok=True)
+        dst = os.path.join(d, os.path.basename(path))
+        shutil.copyfile(path, dst)
+        return dst
+    except Exception:
+        return path
+
+
 def open_html(path):
+    path = _share(path)
     import subprocess
     for cmd in (["termux-open", path], ["xdg-open", path]):
         try:

@@ -11307,6 +11307,7 @@ def demo_interface():
     print("  cache    → API cache / rate-limit protection status")
     print("  cache clear → Clear the API response cache")
     print("  rating   → Composite rating log (rating performance [hours])")
+    print("  chart <coin> [interval] [candles] → Clean HTML candle chart (EMA20/50, opens in browser)")
     print("  lab play <set> [each] → Play the prediction game (lab mine <set> = your record)")
     print("  lab list|report|summary|verify <set> → Market Lab results (own lab.db)")
     print("  quit     → Exit demo")
@@ -11343,6 +11344,7 @@ def demo_interface():
                 print("  trades   → Paper trade TP/SL outcomes (TP1/TP2/TP3/stop hits)")
                 print("  cache    → API cache / rate-limit protection status")
                 print("  cache clear → Clear the API response cache")
+                print("  chart <coin> [interval] [candles] → Clean HTML candle chart (EMA20/50, opens in browser)")
                 print("  lab play <set> [each] → Play the prediction game (lab mine <set> = your record)")
                 print("  lab list|report|summary|verify <set> → Market Lab results (own lab.db)")
                 print("  help / commands → Show this list again")
@@ -11408,6 +11410,15 @@ def demo_interface():
             # since "predict batch ..." also starts with "predict "
             # and would otherwise be swallowed by that handler's
             # <coin> parsing and rejected as bad usage.
+            if user_request == "chart" or user_request.startswith("chart "):
+                try:
+                    import subprocess as _sp, sys as _sys
+                    _c = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hex_chart.py")
+                    _sp.run([_sys.executable, _c] + raw_request.split()[1:])
+                except Exception as e:
+                    print("chart command error: " + str(e))
+                continue
+
             if user_request == "lab" or user_request.startswith("lab "):
                 try:
                     import subprocess as _sp, sys as _sys

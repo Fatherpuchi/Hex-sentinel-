@@ -130,6 +130,21 @@ def fetch_binance_data(symbol, interval, limit):
 
     url = "https://api.binance.com/api/v3/klines"
 
+    # Use spot candles when the coin has a spot market, otherwise futures.
+    data_source = "Spot"
+    try:
+        _probe = requests.get(
+            url,
+            params={"symbol": symbol, "interval": interval, "limit": 1},
+            timeout=15,
+        )
+        if _probe.status_code == 400:
+            url = "https://fapi.binance.com/fapi/v1/klines"
+            data_source = "Futures (no spot market)"
+    except requests.exceptions.RequestException:
+        pass
+    print(f"   Data source: {data_source}")
+
     all_data = []
     end_time = None
 
@@ -757,6 +772,24 @@ def save_walk_forward_results(walk_forward, strategy_name, version):
 # PAPER SIGNAL
 # ============================================================
 
+def log_rating(df, signal, price):
+    """Log composite rating next to the paper signal. Never raises."""
+    try:
+        from composite_rating import composite_rating
+        r = composite_rating(df[:-1])
+        conn = sqlite3.connect(DB_FILE)
+        conn.execute("CREATE TABLE IF NOT EXISTS rating_log (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT, interval TEXT, hex_signal TEXT, rating TEXT, score REAL, ma_score REAL, osc_score REAL, price REAL, created_at TEXT)")
+        conn.execute(
+            "INSERT INTO rating_log (symbol, interval, hex_signal, rating, score, ma_score, osc_score, price, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (SYMBOL, INTERVAL, signal, r["rating"], r["score"], r["ma_score"], r["osc_score"], price, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        conn.close()
+        print("   Composite rating: " + r["rating"] + " (" + format(r["score"], "+.2f") + ") | Hex signal: " + str(signal))
+    except Exception as e:
+        print("   (rating log skipped: " + str(e) + ")")
+
+
 def generate_paper_signal(df, strategy_name, version, status):
 
     latest = df[-1]
@@ -794,6 +827,7 @@ def generate_paper_signal(df, strategy_name, version, status):
     conn.commit()
     conn.close()
 
+    log_rating(df, signal, price)
     return signal, price
 
 

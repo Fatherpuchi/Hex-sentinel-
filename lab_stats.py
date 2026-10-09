@@ -90,6 +90,34 @@ def selftest():
     print((G + "selftest passed" if ok else R + "selftest FAILED") + X)
 
 
+def guard(conn, name, force=False):
+    """Refuse to show opponent results on a set the human has not fully played."""
+    try:
+        import lab_play
+        lab_play.ensure(conn)
+    except Exception:
+        pass
+    n = conn.execute("SELECT COUNT(*) FROM rounds WHERE set_name=?", (name,)).fetchone()[0]
+    if n == 0:
+        return True
+    locked = conn.execute("SELECT COUNT(*) FROM predictions WHERE set_name=? AND player='human'", (name,)).fetchone()[0]
+    try:
+        revealed = conn.execute("SELECT COUNT(*) FROM reveals WHERE set_name=? AND player='human'", (name,)).fetchone()[0]
+    except Exception:
+        revealed = 0
+    if not (name.lower().startswith("human") or locked > 0):
+        return True
+    if locked >= n and revealed >= n:
+        return True
+    print(f"{R}BLOCKED: '{name}' is a human set and you have locked {locked}/{n} and seen {revealed}/{n} reveals.{X}")
+    print(f"{Y}Opponent results would show which way the set leans before you finish playing it.{X}")
+    if force:
+        print(f"{Y}force given: continuing. Treat the set as no longer blind.{X}")
+        return True
+    print(f"{D}Finish with: lab play {name}   (add the word force only for a set you already know is burned){X}")
+    return False
+
+
 def cli(a):
     if a[0] == "selftest":
         return selftest()

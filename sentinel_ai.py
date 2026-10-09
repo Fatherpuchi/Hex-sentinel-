@@ -2093,21 +2093,29 @@ def fetch_monitor_candles(symbol, start_iso, end_dt):
 
     start_dt = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
 
-    response = requests.get(
-        "https://api.binance.com/api/v3/klines",
-        params={
-            "symbol": symbol,
-            "interval": "1h",
-            "startTime": int(start_dt.timestamp() * 1000),
-            "endTime": int(end_dt.timestamp() * 1000),
-            "limit": 1000,
-        },
-        timeout=15,
-    )
-    response.raise_for_status()
+    _params = {
+        "symbol": symbol,
+        "interval": "1h",
+        "startTime": int(start_dt.timestamp() * 1000),
+        "endTime": int(end_dt.timestamp() * 1000),
+        "limit": 1000,
+    }
+    _rows = None
+    for _url in ("https://api.binance.com/api/v3/klines",
+                 "https://fapi.binance.com/fapi/v1/klines"):
+        try:
+            response = requests.get(_url, params=_params, timeout=15)
+            response.raise_for_status()
+            _rows = response.json()
+            if _rows:
+                break
+        except Exception:
+            _rows = None
+    if _rows is None:
+        raise RuntimeError("fetch_monitor_candles: spot and futures both failed for " + str(symbol))
 
     candles = []
-    for row in response.json():
+    for row in _rows:
         candles.append({
             "close_time": datetime.fromtimestamp(row[6] / 1000, tz=timezone.utc),
             "high": float(row[2]),

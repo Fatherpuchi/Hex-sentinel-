@@ -365,6 +365,12 @@ def main():
         return
     conn = connect()
     cmd = a[0]
+    force = "force" in a
+    a = [x for x in a if x != "force"]
+    if cmd in ("run", "runall", "summary", "report") and len(a) >= 2:
+        import lab_stats
+        if not lab_stats.guard(conn, a[1], force):
+            return
     if cmd == "list":
         for name, seed, n, created, h in conn.execute("SELECT name,seed,n,created,hash FROM sets"):
             print(f"{C}{name}{X} n={n} seed={seed} {created[:19]} hash={h[:16]}")

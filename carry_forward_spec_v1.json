@@ -1,0 +1,82 @@
+{
+ "hash": "3ab269929d7268b7258dd5e79cb5f30330252a389db1fdf3947aafb79d688c2f",
+ "spec": {
+  "version": "carry-forward-v1",
+  "mode": "PAPER ONLY. No exchange orders are placed.",
+  "mandatory_wording": "This describes what happened historically on seen data. It is not evidence of a long-term edge. No statistical significance is claimed.",
+  "historical_spec_hash": "ee7c1dc7c96c5d6ae4c609bd72e956359622eba118f5fc16befa23d52d5bf39f",
+  "frozen_at_utc": "2026-10-11T12:23:52.511837+00:00",
+  "forward_start_utc": "2026-10-11T12:23:52.511837+00:00",
+  "forward_start_rule": "the forward clock starts at the single freeze timestamp shared with the historical spec. Data between the historical cutoff and the freeze timestamp was available while the spec was being written and counts as seen, not forward.",
+  "collector_must_verify": [
+   "recompute SHA-256 of the stored historical spec with the same canonical JSON function as the freeze script and compare with its stored hash",
+   "forward spec's historical_spec_hash equals the historical file's hash",
+   "recompute and compare the forward spec's own hash",
+   "refuse to collect or evaluate if either file or experiments.json is missing or any check fails; never write into a spec file"
+  ],
+  "accounting": {
+   "portfolio_accounting": {
+    "capital": "100 units of total portfolio capital at the first rebalance; this is total capital, not per coin",
+    "allocation": "on the first 00:00 UTC of each month (the monthly rebalance), total equity at that moment is split equally across coins eligible that day; each coin's slice is 50% spot long and 50% perp margin, equal notional (1x)",
+    "new_coins": "a coin that becomes eligible mid-month is not added until the next monthly rebalance. A coin eligible before the portfolio's first rebalance enters at that rebalance. There is no mid-month entry. Each coin's entry date and days waited are reported.",
+    "coin_data_ends": "if a coin's data ends or it is delisted before the cutoff, its position is closed at the last valid price with full costs; the proceeds stay in cash until the next monthly rebalance, then are redistributed equally",
+    "liquidation": "the perp leg is closed per the liquidation model; the spot leg stays open; the slice stays with that coin during the 7-day wait and is not redistributed mid-month; the coin rejoins at the next monthly rebalance if still eligible",
+    "idle_cash": "earns 0, not H. The output must report the average idle share of equity",
+    "equity_curve": "a single portfolio equity curve (all slices plus cash), daily at 00:00 UTC. Every weekly, monthly, drawdown, annual and rolling-window figure is computed from it. Daily return = change in total equity / previous day's equity. Per-coin figures use each coin's own slice-equity curve."
+   },
+   "funding": "sum of actual settled records at their own timestamps (rate x perp qty x mark-candle open at the settlement hour); never records x 8h; received only if entry < settlement < exit",
+   "rebalance": "first 00:00 UTC of each month; restore equal notional and the 50/50 split inside each slice; costs on traded notional; no drift-triggered rebalance; no mid-month entry (see portfolio_accounting.new_coins)",
+   "price_pnl": "spot and perp marked on hourly closes; missing spot hour 2023-03-24 13:00 uses the last price, count logged, sensitivity run without that day",
+   "fees": {
+    "spot_per_side": 0.001,
+    "perp_taker_per_side": 0.0005,
+    "slippage_per_leg_per_side": 0.0005,
+    "stress_slippage": 0.0015,
+    "status": "PROVISIONAL, unverified account tier"
+   },
+   "H_annual": 0.04,
+   "benchmark": "H is a descriptive comparison only: annualized net return of the whole portfolio equity curve, idle cash included, against H_annual. No H is credited to any position or to idle cash.",
+   "liquidation": {
+    "maintenance_rate": 0.025,
+    "sensitivity": [
+     0.01,
+     0.05
+    ],
+    "status": "PLACEHOLDER, not verified, not called conservative",
+    "trigger": "mark-candle high pushes perp margin equity (margin - unrealized loss + funding - fees) below maintenance",
+    "close_price": "the maintenance-trigger price, not the candle high",
+    "penalty_of_notional": 0.01,
+    "spot_leg": "stays open at market; spot gain never tops up perp margin",
+    "reentry": "after 7 days with full entry costs; no margin top-ups",
+    "report": "events and closest approach (min margin equity / maintenance) per coin"
+   },
+   "definitions": {
+    "positive_net_return": "total return on capital after fees, slippage, funding and liquidation costs is strictly > 0, with no H credit",
+    "zero_return": "neither positive nor negative",
+    "annualization": "(1 + total return) ** (365 / calendar days) - 1",
+    "above_H": "annualized net return strictly greater than H_annual",
+    "full_calendar_year": "a calendar year is full-year if, on every day of that year inside the window, at least 80% of the eligible universe was active; the fraction per year is printed so no year is silently classified; thresholds apply to full years only; other years are labelled partial",
+    "rolling_windows": "26 consecutive weeks ending on a Sunday at 24:00 UTC, stepping one week, so windows overlap and are not independent; only windows fully inside the equity curve count; incomplete windows are excluded and their number reported; a window is positive if end equity is strictly greater than start equity; a missing day is carried at the previous equity and the count reported; share = positive windows / counted windows"
+   },
+   "universe": "39 coins that passed Rule B in carry_coverage_detail.py; 1000SHIBUSDT excluded (different contract size).",
+   "status": "fees, H and maintenance are unverified provisional assumptions"
+  },
+  "missing_data": "a missing candle or funding record is logged with its timestamp; the last price is carried only for spot candles and only with a log entry; a missing funding record is never imputed",
+  "weekly_record": [
+   "funding actually settled, with timestamps",
+   "spot and perp prices",
+   "cost assumptions",
+   "net performance and annualized comparison with H",
+   "drawdown",
+   "liquidation proximity",
+   "average idle share",
+   "missing data",
+   "operational failures (collector errors, API failures)"
+  ],
+  "minimum_weeks": 26,
+  "review": "at 26 weeks, review without changing rules; if disappointing or ambiguous, keep collecting; never rescue",
+  "rule_change": "any substantive change makes a new version with a new hash and restarts the clock",
+  "limit": "26 weeks is a minimum, not proof that persistent regimes were sampled; a favourable stretch can still be inconclusive",
+  "collector": "the weekly collector script is not written yet; it needs review before use"
+ }
+}

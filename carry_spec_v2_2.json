@@ -1,0 +1,138 @@
+{
+ "hash": "f9bbfb1d1f3d3d485a32ad20cad4fff1d275e38bceb898dcbc0560d68823a1df",
+ "spec": {
+  "version": "carry-v2.2",
+  "mechanism": "Leveraged longs pay shorts funding; a spot-long / perp-short holder collects it without predicting price. It should persist while leveraged-long demand exceeds supply and decay as the trade crowds.",
+  "universe": "39 coins that passed Rule B in carry_coverage_detail.py; 1000SHIBUSDT excluded (different contract size).",
+  "windows": "each coin from its first settlement hour with spot, perp, mark and funding all present, to the last closed hour at the freeze date",
+  "disclosures": [
+   "funding used as a direction signal in an earlier replay on 14 coins",
+   "historical run is a screen on seen data",
+   "survivorship: today's listed coins",
+   "dataset hashes recorded at the real run"
+  ],
+  "capital": "100 units; Rung 1 deploys all of it: 50 spot, 50 perp margin, equal notional (1x)",
+  "benchmark": "H applies to the same 100 units. Rung 1 earns NO H on top of its own return. Rung 2 credits H only to a coin's share of capital while that coin is OFF.",
+  "H_annual": 0.04,
+  "H_status": "PROVISIONAL, unverified, excludes promotional rewards",
+  "fees": {
+   "spot_per_side": 0.001,
+   "perp_taker_per_side": 0.0005,
+   "slippage_per_leg_per_side": 0.0005,
+   "stress_slippage": 0.0015,
+   "status": "PROVISIONAL, unverified account tier"
+  },
+  "funding": "sum of actual settled records at their own timestamps (rate x perp qty x mark-candle open at the settlement hour); never records x 8h; received only if entry < settlement < exit",
+  "rebalance": "first 00:00 UTC of each month; restore equal notional and 50/50 split; costs on traded notional; no drift-triggered rebalance; coins entering or leaving mid-month trade at their window boundary with full costs",
+  "price_pnl": "spot and perp marked on hourly closes; missing spot hour 2023-03-24 13:00 uses the last price, count logged, sensitivity run without that day",
+  "liquidation": {
+   "maintenance_rate": 0.025,
+   "sensitivity": [
+    0.01,
+    0.05
+   ],
+   "status": "PLACEHOLDER, not verified, not called conservative",
+   "trigger": "mark-candle high pushes perp margin equity (margin - unrealized loss + funding - fees) below maintenance",
+   "close_price": "the maintenance-trigger price, not the candle high",
+   "penalty_of_notional": 0.01,
+   "spot_leg": "stays open at market; spot gain never tops up perp margin",
+   "reentry": "after 7 days with full entry costs; no margin top-ups",
+   "report": "events and closest approach (min margin equity / maintenance) per coin"
+  },
+  "rung2": {
+   "filter": "per coin at 00:00 UTC, trailing 30-day mean of settled funding records before the decision must be > 0",
+   "warmup": "coin waits for 30 full days of records",
+   "off_state": "capital earns H",
+   "run_only_if": "Rung 1 calibration power at +1% per year is >= 80% (proxy, fixed now); otherwise logged INCONCLUSIVE and not run"
+  },
+  "liquidity_rank": "median daily quote volume (close x base volume summed per UTC day) from fade.db spot, 2023-11-11 to 2026-10-08; ties alphabetical; 5 lowest excluded in a robustness run only",
+  "statistic": "annualized mean daily net return on total capital of the equal-weight portfolio over active coins (calendar-time annualization)",
+  "full_year_rule": "a calendar year is gated only if >= 80% of coins in the portfolio were active all year; otherwise reported as partial",
+  "pass_bar_rung1": [
+   "99.5% one-sided lower bound of annualized net return > H at base costs",
+   "mean > H at stress costs (slippage 0.15%, maintenance 5%)",
+   "net return > 0 in every full calendar year",
+   "zero liquidation events in the base model, closest approach reported",
+   "max drawdown <= 10% of capital (screening threshold only)",
+   ">= 80% of rolling 26-week windows positive",
+   ">= 55% of coins net positive",
+   "same result without the 5 least-liquid coins"
+  ],
+  "family": "2 hypotheses (rung 1 vs H, rung 2 vs rung 1), 1% total budget, 0.5% each",
+  "forward": "weekly collection continues; data after the freeze date is unseen; confirmation needs >= 26 forward weeks with the same spec",
+  "calibration": {
+   "T_days": 1740,
+   "H": 0.04,
+   "blocks": [
+    14,
+    28,
+    56
+   ],
+   "seeds": [
+    1,
+    2
+   ],
+   "B": 10000,
+   "lower_q": 0.005,
+   "funding_sd": 0.0005,
+   "funding_sd_meaning": "stationary sd of the AR(1) persistent funding component, per day",
+   "half_lives": [
+    20,
+    45,
+    90
+   ],
+   "noise_sd": [
+    0.0005,
+    0.0015
+   ],
+   "noise": "Student t(4) scaled to unit variance times noise_sd",
+   "stages": [
+    {
+     "worlds": 986,
+     "per_seed": 11,
+     "pooled": 18
+    },
+    {
+     "worlds": 1972,
+     "per_seed": 22,
+     "pooled": 36
+    },
+    {
+     "worlds": 3944,
+     "per_seed": 44,
+     "pooled": 72
+    }
+   ],
+   "limits_rule": "stage-1 limits are the v2.1 limits; later stages keep the same rates (11/986 per seed, 18/1972 pooled), rounded down",
+   "precision_upper_max": 0.02,
+   "precision_rule": "for a world type, if any block that passes the count limits has a pooled 95% Clopper-Pearson upper bound above 2%, that world type moves to the next stage (more worlds, same seeds, earlier worlds reused). If still flagged at the last stage, status is NEEDS MORE WORLDS: no block selected, no power run, no real data. Blocks failing the count limits are rejected and need no precision.",
+   "min_persistent_share": 0.05,
+   "uninformative_rule": "a world type whose persistent variance share is below min_persistent_share stops the calibration (UNINFORMATIVE); it is never silently dropped",
+   "selfcheck": {
+    "worlds": 300,
+    "acf_lag": 30,
+    "acf_abs_tol": 0.03,
+    "var_rel_tol": 0.1,
+    "theory": "share = sf^2/(sf^2+se^2); combined lag-k autocorrelation = share * 2^(-k/half_life); stationary funding variance = sf^2"
+   },
+   "power_deltas": [
+    0.01,
+    0.02,
+    0.04
+   ],
+   "power_worlds": 300,
+   "power_seed": 4,
+   "power_target": 0.8,
+   "selection": "shortest block that passes every world type; if none passes, stop and do not test real profitability",
+   "rung2_rule": "Rung 2 is run only if worst-case power at +1% per year is >= 80%; otherwise logged INCONCLUSIVE and not run",
+   "assumption_status": "all synthetic parameters are provisional stress assumptions, not estimates of real crypto behaviour; the real run must report its realised daily sd and persistence",
+   "does_not_cover": "accounting, liquidation logic, costs, delistings; the real script needs its own self-checks"
+  },
+  "supersedes": {
+   "version": "carry-v2.1",
+   "hash": "4f857ebdd3873c27c8c58ca24c0326b9ede5080faac009f731915f4f11fda237",
+   "status": "superseded before any calibration result or real return was seen; v2.1 calibration never completed and is not claimed as passed",
+   "reason": "The v2.1 synthetic funding component (sd 0.0001/day) was too small relative to basis noise to meaningfully stress persistent regimes (persistent share of variance about 4% and about 0.2%). The self-check exposed it. Calibration parameters were revised before any real funding rates or strategy returns were examined."
+  }
+ }
+}

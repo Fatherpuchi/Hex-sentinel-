@@ -1,0 +1,209 @@
+[
+ {
+  "id": "E001",
+  "timestamp": "2026-10-09",
+  "type": "closed",
+  "name": "fade24",
+  "result": "FAILED",
+  "rule": "fade a 24h move of >=1.5 sigma (z of 24h return vs 100h vol), 60% confidence, hold 24h",
+  "data": "fade.db, 40 coins, 9,739 scored events over 1,036 days, cost 0.20% round trip, no funding",
+  "observation": "net return per trade negative: day-cluster 95% CI [-0.701%, -0.069%], trimmed mean -0.113%, halves -0.438% / -0.317%, 10% of coins positive. Paired and shuffle tests passed (p=0.0094, 0.0005).",
+  "interpretation": "Not supported as a profitable rule. The paired and shuffle tests were later shown to be anti-conservative with correlated coins (audit section 4) and were not relied on."
+ },
+ {
+  "timestamp": "2026-10-10T08:02:26.444758+00:00",
+  "type": "experiment",
+  "name": "momentum ladder rungs 1-3",
+  "spec": {
+   "version": "v3-real-1",
+   "decision": "00:00 UTC daily per coin; uses candles closing at or before that time",
+   "signal": "sign of previous 24h log return; zero return = no signal",
+   "rung1": "unfiltered momentum (baseline, descriptive only)",
+   "rung2": "rung1 and vol_ratio>=1.25 (stdev 24h returns / stdev 720h returns)",
+   "rung3": "rung2 and agreement>=0.6 among coins with finite nonzero 24h return (target included), >=30 such coins",
+   "trade": "entry next candle open, exit close 24 candles later, 1x, no stops, equal size",
+   "cost_round_trip": 0.002,
+   "stress_cost": 0.003,
+   "funding": "NOT INCLUDED in this run (rung 4 and funding deferred; logged limitation)",
+   "market_adjustment": "net return minus signal sign x equal-weight mean gross return of coins with data over the same hold",
+   "bootstrap": "fixed non-overlapping 7-day blocks of days from day 31, 10000 resamples, 99.5% two-sided, seeds [101, 102]",
+   "primary_gate": "market-adjusted mean(rung3)-mean(rung2): 99.5% lower bound > 0 at seed 101; seed 102 must agree else UNSTABLE",
+   "reported_not_gating": [
+    "raw",
+    "raw ex-10 illiquid",
+    "adjusted ex-10 illiquid",
+    "halves",
+    "rung2 vs rung1 point estimate"
+   ],
+   "illiquid": "10 lowest mean quote volume (close x base volume) over the dataset",
+   "family": "2 hypotheses (rung2 vs 1 descriptive, rung3 vs 2 gated), Bonferroni 1%",
+   "mechanisms": {
+    "rung2": "momentum continues when volatility is expanding",
+    "rung3": "momentum is more reliable when other coins confirm it"
+   }
+  },
+  "spec_hash": "d9026a7218dee20845b997d48d71b3f3b1202d05f2b63ef501e209562a9106b9",
+  "code_hash": {
+   "fade_experiment.py": "f3725353c9e08b8c",
+   "fade_calib2.py": "ec280f699276ee10"
+  },
+  "dataset": {
+   "db_sha256": "75d05d7a574de3e31652f7577bd3cf6965c3487e754c8ede88ecbfe6ac1e0c6c",
+   "coins": [
+    "AAVEUSDT",
+    "ADAUSDT",
+    "ALGOUSDT",
+    "APTUSDT",
+    "ARBUSDT",
+    "ATOMUSDT",
+    "AVAXUSDT",
+    "BCHUSDT",
+    "BNBUSDT",
+    "BTCUSDT",
+    "CRVUSDT",
+    "DOGEUSDT",
+    "DOTUSDT",
+    "ENJUSDT",
+    "ETCUSDT",
+    "ETHUSDT",
+    "FETUSDT",
+    "FILUSDT",
+    "GRTUSDT",
+    "HBARUSDT",
+    "ICPUSDT",
+    "INJUSDT",
+    "LINKUSDT",
+    "LTCUSDT",
+    "MANAUSDT",
+    "NEARUSDT",
+    "OPUSDT",
+    "RUNEUSDT",
+    "SANDUSDT",
+    "SEIUSDT",
+    "SHIBUSDT",
+    "SOLUSDT",
+    "STXUSDT",
+    "SUIUSDT",
+    "TIAUSDT",
+    "TRXUSDT",
+    "UNIUSDT",
+    "WLDUSDT",
+    "XLMUSDT",
+    "XRPUSDT"
+   ],
+   "first_day": "2023-11-11",
+   "last_day": "2026-10-08"
+  },
+  "trades": [
+   42491,
+   6910,
+   5470
+  ],
+  "levels": {
+   "rung1": {
+    "n": 42491,
+    "coins": 40,
+    "raw20": -0.0008163605070156567,
+    "raw30": -0.0018163605070156568,
+    "adj20": -0.0017447009474811756,
+    "adj_trim": -0.0023481810807350688
+   },
+   "rung2": {
+    "n": 6910,
+    "coins": 40,
+    "raw20": -0.001029121320204813,
+    "raw30": -0.0020291213202048132,
+    "adj20": -0.0012864742002746319,
+    "adj_trim": -0.0033335658629195446
+   },
+   "rung3": {
+    "n": 5470,
+    "coins": 40,
+    "raw20": -0.0023381365494835283,
+    "raw30": -0.0033381365494835284,
+    "adj20": -0.0017878029485444294,
+    "adj_trim": -0.003014200587109047
+   }
+  },
+  "diff_variants": {
+   "raw": {
+    "point": -0.0013090152292787153,
+    "lo": -0.003646493723983319,
+    "hi": 0.001264109687004826
+   },
+   "market-adjusted": {
+    "point": -0.0005013287482697974,
+    "lo": -0.001515788953918321,
+    "hi": 0.0005287152879289492
+   },
+   "raw ex-10 illiquid": {
+    "point": -0.0011267944886421777,
+    "lo": -0.003695607114386686,
+    "hi": 0.0017147991479902981
+   },
+   "adjusted ex-10 illiquid": {
+    "point": -0.0003938335145325558,
+    "lo": -0.0015432788854312166,
+    "hi": 0.0006983491010330111
+   }
+  },
+  "halves_adjusted_diff": {
+   "first half": -4.131640745058717e-05,
+   "second half": -0.0009934430815954735
+  },
+  "rung2_vs_rung1_adjusted_point": 0.00045822674720654376,
+  "minimum_detectable_effect": 0.002,
+  "status": "FAIL",
+  "observation": "market-adjusted rung3 minus rung2 = -0.050% per trade, 99.5% interval [-0.152%, +0.053%] (seed 102: lower -0.158%); 5470 rung-3 and 6910 rung-2 trades, 152 weekly blocks",
+  "interpretation": "The proposed mechanism (confirmation helps) was not supported at this sensitivity. Effects smaller than about +0.20% per trade could not have been detected, so this is not a disproof.",
+  "limitations": [
+   "historical screen on seen data",
+   "survivorship: today's 40 coins",
+   "slippage unmeasured, flat 0.20%",
+   "funding not included",
+   "calibration used synthetic worlds with no persistent drift",
+   "rung 2 vs 1 not calibrated, descriptive only"
+  ],
+  "prev_hash": "7c154b4e109dfbfa8f12dbaf03f619b5656ab97ecafc2bea5c5ac87d898d0f46",
+  "id": "E002"
+ },
+ {
+  "timestamp": "2026-10-11T11:53:43.255826+00:00",
+  "type": "calibration",
+  "name": "carry v2.2 block-bootstrap calibration",
+  "status": "CALIBRATION FAILED: NO BLOCK QUALIFIES",
+  "spec_hash": "f9bbfb1d1f3d3d485a32ad20cad4fff1d275e38bceb898dcbc0560d68823a1df",
+  "spec_file_sha256": "c7c5103d22bbf58b33fbf3650d8337b9937b64279f6869affd8e0b4a57fa21e6",
+  "result_file_sha256": "b7a05a7b27aae798426e334f32b999b03aab2e45cea44bc82f96b0cd651a52a5",
+  "code_sha256": {
+   "carry_calib22.py": "9064a102f3ddf3a294610faf4d27ec55b8ce993a8c6cb31ef39aa254cdaa5870",
+   "carry_spec22.py": "475ae28a4fd8ed0b5bccd53e04461c48fed9f75ffb5bf9cddf338f13e3482ebd"
+  },
+  "supersedes": {
+   "version": "carry-v2.1",
+   "hash": "4f857ebdd3873c27c8c58ca24c0326b9ede5080faac009f731915f4f11fda237",
+   "status": "superseded before any calibration result or real return was seen; never claimed as passed"
+  },
+  "false_positive_rates_pooled_1972_worlds": {
+   "best": [
+    "(20, 0.0015)-56",
+    0.0268762677484787
+   ],
+   "worst": [
+    "(90, 0.0005)-14",
+    0.2839756592292089
+   ],
+   "target": 0.005,
+   "all_world_types_and_blocks_exceeded_limits": true
+  },
+  "observation": "Every world type and block length (14, 28, 56 days) exceeded the frozen false-positive limits; no block was selected; power was not run.",
+  "interpretation": "Under the tested persistence assumptions the block-bootstrap intervals were far too narrow, because 4.7 years holds only a few independent funding regimes. The test design cannot support a significance claim. This is not evidence that carry does or does not work.",
+  "limitations": [
+   "synthetic parameters were assumptions; real funding persistence may differ",
+   "no real funding rates or returns were read",
+   "v2.2 is not to be rerun or edited"
+  ],
+  "prev_hash": "142c90ab37f8cf720ec23a15b55970710431150f5cd511b6c0823bfe10ecc986",
+  "id": "E003"
+ }
+]

@@ -1,0 +1,137 @@
+{
+ "hash": "ee7c1dc7c96c5d6ae4c609bd72e956359622eba118f5fc16befa23d52d5bf39f",
+ "spec": {
+  "version": "carry-v2.3-historical-screen",
+  "frozen_at_utc": "2026-10-11T12:23:52.511837+00:00",
+  "mechanism": "Leveraged longs pay shorts funding; a spot-long / perp-short holder collects it without predicting price. It should persist while leveraged-long demand exceeds supply and decay as the trade crowds.",
+  "universe": "39 coins that passed Rule B in carry_coverage_detail.py; 1000SHIBUSDT excluded (different contract size).",
+  "window_start": "each coin is eligible from its first settlement hour with spot, perp, mark and funding all present (Rule B)",
+  "global_cutoff": {
+   "window_end_utc_ms": 1791590400000,
+   "window_end": "2026-10-10 00:00 UTC (exclusive)",
+   "rule": "only data strictly before the cutoff is used; the cutoff is fixed from timestamps only and never moves for any coin",
+   "coverage_reporting": "per coin, report the first and last valid observation actually used and any gaps; a coin with data ending before the cutoff is reported as such, not extended and not allowed to shorten the window"
+  },
+  "disclosures": [
+   "funding used as a direction signal in an earlier replay on 14 coins",
+   "historical screen on seen data",
+   "survivorship: today's listed coins",
+   "dataset hashes recorded at the real run"
+  ],
+  "portfolio_accounting": {
+   "capital": "100 units of total portfolio capital at the first rebalance; this is total capital, not per coin",
+   "allocation": "on the first 00:00 UTC of each month (the monthly rebalance), total equity at that moment is split equally across coins eligible that day; each coin's slice is 50% spot long and 50% perp margin, equal notional (1x)",
+   "new_coins": "a coin that becomes eligible mid-month is not added until the next monthly rebalance. A coin eligible before the portfolio's first rebalance enters at that rebalance. There is no mid-month entry. Each coin's entry date and days waited are reported.",
+   "coin_data_ends": "if a coin's data ends or it is delisted before the cutoff, its position is closed at the last valid price with full costs; the proceeds stay in cash until the next monthly rebalance, then are redistributed equally",
+   "liquidation": "the perp leg is closed per the liquidation model; the spot leg stays open; the slice stays with that coin during the 7-day wait and is not redistributed mid-month; the coin rejoins at the next monthly rebalance if still eligible",
+   "idle_cash": "earns 0, not H. The output must report the average idle share of equity",
+   "equity_curve": "a single portfolio equity curve (all slices plus cash), daily at 00:00 UTC. Every weekly, monthly, drawdown, annual and rolling-window figure is computed from it. Daily return = change in total equity / previous day's equity. Per-coin figures use each coin's own slice-equity curve."
+  },
+  "benchmark": "H is a descriptive comparison only: annualized net return of the whole portfolio equity curve, idle cash included, against H_annual. No H is credited to any position or to idle cash.",
+  "H_annual": 0.04,
+  "H_status": "PROVISIONAL, unverified, excludes promotional rewards",
+  "fees": {
+   "spot_per_side": 0.001,
+   "perp_taker_per_side": 0.0005,
+   "slippage_per_leg_per_side": 0.0005,
+   "stress_slippage": 0.0015,
+   "status": "PROVISIONAL, unverified account tier"
+  },
+  "funding": "sum of actual settled records at their own timestamps (rate x perp qty x mark-candle open at the settlement hour); never records x 8h; received only if entry < settlement < exit",
+  "rebalance": "first 00:00 UTC of each month; restore equal notional and the 50/50 split inside each slice; costs on traded notional; no drift-triggered rebalance; no mid-month entry (see portfolio_accounting.new_coins)",
+  "price_pnl": "spot and perp marked on hourly closes; missing spot hour 2023-03-24 13:00 uses the last price, count logged, sensitivity run without that day",
+  "liquidation": {
+   "maintenance_rate": 0.025,
+   "sensitivity": [
+    0.01,
+    0.05
+   ],
+   "status": "PLACEHOLDER, not verified, not called conservative",
+   "trigger": "mark-candle high pushes perp margin equity (margin - unrealized loss + funding - fees) below maintenance",
+   "close_price": "the maintenance-trigger price, not the candle high",
+   "penalty_of_notional": 0.01,
+   "spot_leg": "stays open at market; spot gain never tops up perp margin",
+   "reentry": "after 7 days with full entry costs; no margin top-ups",
+   "report": "events and closest approach (min margin equity / maintenance) per coin"
+  },
+  "liquidity_rank": "median daily quote volume (close x base volume summed per UTC day) from fade.db spot, 2023-11-11 to 2026-10-08; ties alphabetical; 5 lowest excluded in a robustness run only",
+  "liquidity_limitation": "the ranking period ends 2026-10-08, two days before the historical cutoff, and starts 2023-11-11, after many coin windows begin; stated limitation, not a gate",
+  "definitions": {
+   "positive_net_return": "total return on capital after fees, slippage, funding and liquidation costs is strictly > 0, with no H credit",
+   "zero_return": "neither positive nor negative",
+   "annualization": "(1 + total return) ** (365 / calendar days) - 1",
+   "above_H": "annualized net return strictly greater than H_annual",
+   "full_calendar_year": "a calendar year is full-year if, on every day of that year inside the window, at least 80% of the eligible universe was active; the fraction per year is printed so no year is silently classified; thresholds apply to full years only; other years are labelled partial",
+   "rolling_windows": "26 consecutive weeks ending on a Sunday at 24:00 UTC, stepping one week, so windows overlap and are not independent; only windows fully inside the equity curve count; incomplete windows are excluded and their number reported; a window is positive if end equity is strictly greater than start equity; a missing day is carried at the previous equity and the count reported; share = positive windows / counted windows"
+  },
+  "supersedes": {
+   "version": "carry-v2.2",
+   "hash": "f9bbfb1d1f3d3d485a32ad20cad4fff1d275e38bceb898dcbc0560d68823a1df",
+   "reason": "v2.2 calibration failed (NO BLOCK QUALIFIES): block-bootstrap intervals were unreliable under persistent funding regimes. All inference was removed; the screen is descriptive only. Accounting rules are unchanged from v2.1 except the portfolio rules above."
+  },
+  "mandatory_wording": "This describes what happened historically on seen data. It is not evidence of a long-term edge. No statistical significance is claimed.",
+  "prohibited": [
+   "p-values",
+   "confidence intervals",
+   "bootstrap",
+   "significance gates",
+   "any claim of historical profitability or edge"
+  ],
+  "outputs_descriptive_only": [
+   "net yield on total portfolio capital, total and by calendar year",
+   "worst week, worst month, max drawdown on the equity curve",
+   "average idle share of equity, and each coin's entry date and days waited",
+   "liquidation events and closest approach at maintenance 1%, 2.5% and 5%",
+   "sensitivity: slippage 0.15%; without the 5 least-liquid coins; with and without 2023-03-24",
+   "share of coins with positive net return and share of rolling 26-week windows positive, as plain numbers",
+   "annualized net yield compared with H, at base and at stress slippage, descriptive only",
+   "per-coin coverage and the survivorship limitation",
+   "realised daily sd and funding persistence of the data, for the record"
+  ],
+  "original_eight_criteria_mapping": [
+   {
+    "n": 1,
+    "original": "99.5% one-sided lower bound of annualized net return > H",
+    "v2.3": "REMOVED: no inferential claims"
+   },
+   {
+    "n": 2,
+    "original": "mean > H at stress costs (slippage 0.15%, maintenance 5%)",
+    "v2.3": "descriptive comparison with H only, not a gate"
+   },
+   {
+    "n": 3,
+    "original": "net return > 0 in every full calendar year",
+    "v2.3": "screening threshold"
+   },
+   {
+    "n": 4,
+    "original": "zero liquidation events in the base model",
+    "v2.3": "screening threshold"
+   },
+   {
+    "n": 5,
+    "original": "max drawdown <= 10% of capital",
+    "v2.3": "screening threshold"
+   },
+   {
+    "n": 6,
+    "original": ">= 80% of rolling 26-week windows positive",
+    "v2.3": "screening threshold"
+   },
+   {
+    "n": 7,
+    "original": ">= 55% of coins net positive",
+    "v2.3": "screening threshold"
+   },
+   {
+    "n": 8,
+    "original": "same result without the 5 least-liquid coins",
+    "v2.3": "robustness threshold: criteria 3 to 7 recomputed without those coins must still be met"
+   }
+  ],
+  "thresholds_status": "not loosened; meeting them is a descriptive screen, not evidence of an edge",
+  "rung2": "NOT TESTED: its power gate was never computed. Logged as not tested, not as failed.",
+  "real_data_rule": "the screening script reads funding.db and carry_klines.db only after this spec is frozen and the script passes its synthetic accounting self-checks"
+ }
+}

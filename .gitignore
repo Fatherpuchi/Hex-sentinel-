@@ -52,3 +52,8 @@ lab_charts/
 charts/
 band
 hband
+*.broken*
+*.bak_*
+carry_draft_*.txt
+harness_draft.txt
+charts/

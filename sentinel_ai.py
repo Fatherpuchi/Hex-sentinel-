@@ -10214,7 +10214,10 @@ def market_menu():
     print("\n5. 🔎 Search Crypto")
     print("   Search both Spot + Futures")
 
-    print("\n6. Exit")
+    print("\n6. 📊 Stocks")
+    print("   Binance TradFi stock perpetuals (paper research only)")
+
+    print("\n7. Exit")
 
     choice = input("\nChoose: ").strip()
 
@@ -10244,7 +10247,17 @@ def market_menu():
     # EXIT
     # ========================================================
 
+    if choice == "7":
+        return
+
     if choice == "6":
+        try:
+            import subprocess as _sp, sys as _sys
+            _s = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stocks.py")
+            _q = input("\nStocks: gainers / losers / volume / us / hk / kr / commodity / preipo / all / or a ticker like aapl [gainers]: ").strip() or "gainers"
+            _sp.run([_sys.executable, _s] + _q.split())
+        except Exception as e:
+            print("stocks error: " + str(e))
         return
 
     # ========================================================
@@ -11316,6 +11329,7 @@ def demo_interface():
     print("  cache clear → Clear the API response cache")
     print("  rating   → Composite rating log (rating performance [hours])")
     print("  chart <coin> [interval] [candles] → Clean HTML candle chart (EMA20/50, opens in browser)")
+    print("  stocks [gainers|losers|volume|us|hk|commodity|all|<ticker>] → Binance stock perpetuals (paper research only)")
     print("  lab play <set> [each] → Play the prediction game (lab mine <set> = your record)")
     print("  lab list|report|summary|verify <set> → Market Lab results (own lab.db)")
     print("  quit     → Exit demo")
@@ -11353,6 +11367,7 @@ def demo_interface():
                 print("  cache    → API cache / rate-limit protection status")
                 print("  cache clear → Clear the API response cache")
                 print("  chart <coin> [interval] [candles] → Clean HTML candle chart (EMA20/50, opens in browser)")
+                print("  stocks [gainers|losers|volume|us|hk|commodity|all|<ticker>] → Binance stock perpetuals (paper research only)")
                 print("  lab play <set> [each] → Play the prediction game (lab mine <set> = your record)")
                 print("  lab list|report|summary|verify <set> → Market Lab results (own lab.db)")
                 print("  help / commands → Show this list again")
@@ -11418,6 +11433,15 @@ def demo_interface():
             # since "predict batch ..." also starts with "predict "
             # and would otherwise be swallowed by that handler's
             # <coin> parsing and rejected as bad usage.
+            if user_request == "stocks" or user_request.startswith("stocks "):
+                try:
+                    import subprocess as _sp, sys as _sys
+                    _s = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stocks.py")
+                    _sp.run([_sys.executable, _s] + raw_request.split()[1:])
+                except Exception as e:
+                    print("stocks command error: " + str(e))
+                continue
+
             if user_request == "chart" or user_request.startswith("chart "):
                 try:
                     import subprocess as _sp, sys as _sys

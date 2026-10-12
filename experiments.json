@@ -205,5 +205,80 @@
   ],
   "prev_hash": "142c90ab37f8cf720ec23a15b55970710431150f5cd511b6c0823bfe10ecc986",
   "id": "E003"
+ },
+ {
+  "timestamp": "2026-10-11T22:25:29.009313+00:00",
+  "type": "historical_screen",
+  "name": "carry v2.3 descriptive historical screen",
+  "status": "DESCRIPTIVE SCREEN COMPLETED (no significance claimed)",
+  "mandatory_wording": "This describes what happened historically on seen data. It is not evidence of a long-term edge. No statistical significance is claimed.",
+  "historical_spec_hash": "ee7c1dc7c96c5d6ae4c609bd72e956359622eba118f5fc16befa23d52d5bf39f",
+  "forward_spec_hash": "3ab269929d7268b7258dd5e79cb5f30330252a389db1fdf3947aafb79d688c2f",
+  "code_sha256": "8dc2eb4141b0cf785ede93d61e6706c988373b4dea9fa73031b010e4d2b4a58a",
+  "dataset_sha256": {
+   "carry_klines.db": "2001c1ae3944732cf3d6c702c1a7b3268e554b0b01c9b960090daaf4fcb37943",
+   "funding.db": "d8f9ee4e74638d3919aa04f0cad1f758861e916c45ae6803e0e04ea514e0bac9",
+   "fade.db": "75d05d7a574de3e31652f7577bd3cf6965c3487e754c8ede88ecbfe6ac1e0c6c"
+  },
+  "cutoff": "2026-10-10",
+  "headline": {
+   "total_return": 0.2449401613101665,
+   "annualized": 0.046947619261674456,
+   "max_drawdown_peak": -0.1326323779372688,
+   "max_drawdown_capital": 0.18842461765913227,
+   "liquidation_events": {
+    "maint 1%": 76,
+    "base": 82,
+    "maint 5%": 88
+   },
+   "idle_share": 0.0,
+   "coins_positive_share": 0.6666666666666666
+  },
+  "thresholds": {
+   "3": false,
+   "4": false,
+   "5": false,
+   "6": false,
+   "7": true
+  },
+  "thresholds_ex5": {
+   "3": false,
+   "4": false,
+   "5": false,
+   "6": false,
+   "7": true
+  },
+  "observation": "Descriptive results of the frozen accounting on seen historical data; see headline and thresholds.",
+  "interpretation": "Describes what happened historically on seen data. Not evidence of a long-term edge. No statistical significance is claimed.",
+  "limitations": [
+   "survivorship: today's listed coins",
+   "H, fees, slippage and maintenance are unverified provisional assumptions",
+   "funding was used as a direction signal in an earlier replay on 14 coins",
+   "implementation readings listed in the script header were not in the frozen text"
+  ],
+  "prev_hash": "b6b5456bee6d3e25d122e03b415a7e3811ac436a952ca0b3c662f43b486ade11",
+  "id": "E004"
+ },
+ {
+  "id": "E005",
+  "timestamp": "2026-10-12T06:13:18.315585+00:00",
+  "type": "registry_import",
+  "name": "harness registry import of E001, E002, E004",
+  "harness_spec_hash": "f653fafa2e25afaebe7b24909cac6d565b8a4bc3dc84030950dc17e74a1720bb",
+  "families": [
+   "reversal after extremes",
+   "continuation after momentum",
+   "funding carry"
+  ],
+  "strategies": [
+   "fade24",
+   "momentum_ladder_r1_3",
+   "carry_v2_3"
+  ],
+  "limitations": [
+   "E001 had no frozen spec; its spec_hash is the hash of the log entry",
+   "hypotheses were registered retroactively at import time, so they count toward m but were not registered before their tests"
+  ],
+  "prev_hash": "5273db83569e5bc4333bcef2704649faeb24738b9d28da87c3ce098283c26fd8"
  }
 ]

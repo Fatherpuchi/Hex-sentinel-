@@ -280,5 +280,67 @@
    "hypotheses were registered retroactively at import time, so they count toward m but were not registered before their tests"
   ],
   "prev_hash": "5273db83569e5bc4333bcef2704649faeb24738b9d28da87c3ce098283c26fd8"
+ },
+ {
+  "timestamp": "2026-10-15T07:40:39.979635+00:00",
+  "type": "calibration",
+  "name": "batch1 daily-bar calibration v3",
+  "status": "CALIBRATION DID NOT LICENSE INFERENCE: NO BLOCK QUALIFIES",
+  "spec_hash": "27d0842649a8256ed75c3415c29dfa53fe6a230b92ddfa5a13e76a205dd718d8",
+  "batch1_spec_hash": "7fc3c8c279814d4d72c144a27d9998a489b9fe05a41cb633cd60f1be4d934b10",
+  "spec_file_sha256": {
+   "batch1_spec_v1.json": "2e3f825cccd0b6be522faa91cfcad5318e14f4f1a796fdfc5112417e592eb9cd",
+   "batch1_calib_spec_v3.json": "9db7876d2dd17ec38f041b1cd9df33c2392b0038d86a407506fa328e8669167f"
+  },
+  "result_file_sha256": "0cc39f3e950c8fa901141b8b3a16e5cc2d73b976f62c24764352d9b3891635b1",
+  "code_sha256": {
+   "batch1_engine.py": "7bbd78e2e9899ac702c1ef2e3f49d887284695f9dc801f5aef9c1562d4bb0852",
+   "batch1_calib.py": "6c7248c7802fa0a750af99bf679230263cdf57a01e59ec900cf102b377f2390c",
+   "panel_extract.py": "666d7b48d3087c0d8b01e93670e004c23ec2ed827d505c97d8587882baeb48fa",
+   "freeze_calib_v3.py": "311f14867d7f7472dd326057df01b45a9532770dda803b0e21cab6e91141dfe5",
+   "panel_shape.json": "02e3624a954886ef291cd59033fbb4044de435bda0ed93a34aeef2a28c39c4fa",
+   "batch1_errata_v1.md": "313b3eca8bbba84d7a80844325097f9ce87bf205c2d3fa48d1cbc0dce1881947"
+  },
+  "supersedes": [
+   {
+    "version": "batch1-calibration-v1",
+    "hash": "0ec1ecb0121a168e1f484e8f9361674ac409b9bbfc0271556028c0aed12e47b0",
+    "status": "STOPPED: quick mode failed 3 model self-checks; worlds B and D numerically absurd; its false-positive counts do not exist; never claimed as passed"
+   },
+   {
+    "version": "batch1-calibration-v2",
+    "hash": "858abaf89c9566eca245b28b12e60f8cb0f3121c074569b713bca4cfd963dfde",
+    "status": "STOPPED: full run hit its own WORLD INVALID guard at type A seed 1 world 651; its false-positive counts were deliberately not read; never claimed as passed"
+   }
+  ],
+  "fails_per_block": {
+   "7": 1,
+   "14": 2,
+   "28": 3
+  },
+  "failing_cells": [
+   "A meanrev_short_b1 block 28: seed1 8, seed2 12, pooled 20 of 1972",
+   "C meanrev_short_b1 block 7: seed1 5, seed2 17, pooled 22 of 1972",
+   "C meanrev_short_b1 block 14: seed1 4, seed2 14, pooled 18 of 1972",
+   "C meanrev_short_b1 block 28: seed1 8, seed2 16, pooled 24 of 1972",
+   "D ema50_200 block 14: seed1 12, seed2 3, pooled 15 of 1972",
+   "D breakout20 block 28: seed1 11, seed2 9, pooled 20 of 1972"
+  ],
+  "worst_pooled_cell": "C meanrev_short_b1 block 28: 24 of 1972",
+  "clipped_coin_days": 2780,
+  "nonfinite_worlds": 0,
+  "observation": "No block length (7, 14, 28 days) qualified in all 16 of its cells, so no block was selected and no power run happened. 6 of 48 cells exceeded the frozen limits (11 per seed, 18 pooled at stage 1). All four world types finished at stage 1. No real data or strategy return was read.",
+  "interpretation": "The test procedure was not validated on these synthetic worlds, so inference is not licensed. The batch is descriptive and forward-only. This says nothing about whether any strategy works. Block 7 missed by one cell and was not used. A sparse, heavy-tailed active-return series for meanrev_short_b1 is a hypothesis for its failures, untested.",
+  "limitations": [
+   "worlds are synthetic; the clip made tails lighter than the frozen t(4) design",
+   "48 cells make a failure likely even for a correct test",
+   "null worlds are gross of costs",
+   "v1 and v2 were stopped by their own rules and their counts are not in this entry",
+   "failing cells were read after the run, for the record only",
+   "harness.db registrations came from an unreviewed tool (errata 2 and 16)",
+   "batch1 spec was frozen before approval (errata 1)"
+  ],
+  "prev_hash": "d20e6802057d1f4175bbf4c46078c1ad613f0cf0e863d85586758bcef84c365d",
+  "id": "E006"
  }
 ]

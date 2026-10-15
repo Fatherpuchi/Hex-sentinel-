@@ -1,0 +1,692 @@
+{
+ "version": "batch1-calibration-v3",
+ "calib_spec_hash": "27d0842649a8256ed75c3415c29dfa53fe6a230b92ddfa5a13e76a205dd718d8",
+ "batch1_spec_hash": "7fc3c8c279814d4d72c144a27d9998a489b9fe05a41cb633cd60f1be4d934b10",
+ "engine_hash": "7bbd78e2e9899ac702c1ef2e3f49d887284695f9dc801f5aef9c1562d4bb0852",
+ "status": "NO BLOCK QUALIFIES",
+ "selected_block": null,
+ "fails_per_block": {
+  "7": 1,
+  "14": 2,
+  "28": 3
+ },
+ "stage_of_type": {
+  "A": 0,
+  "B": 0,
+  "C": 0,
+  "D": 0
+ },
+ "cells": [
+  {
+   "type": "A",
+   "hyp": "ema50_200",
+   "block": 7,
+   "seed1": 5,
+   "seed2": 6,
+   "pooled": 11,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "ema50_200",
+   "block": 14,
+   "seed1": 7,
+   "seed2": 7,
+   "pooled": 14,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "ema50_200",
+   "block": 28,
+   "seed1": 5,
+   "seed2": 8,
+   "pooled": 13,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "breakout20",
+   "block": 7,
+   "seed1": 5,
+   "seed2": 8,
+   "pooled": 13,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "breakout20",
+   "block": 14,
+   "seed1": 3,
+   "seed2": 9,
+   "pooled": 12,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "breakout20",
+   "block": 28,
+   "seed1": 5,
+   "seed2": 9,
+   "pooled": 14,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "weekly_mom_b1",
+   "block": 7,
+   "seed1": 7,
+   "seed2": 5,
+   "pooled": 12,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "weekly_mom_b1",
+   "block": 14,
+   "seed1": 4,
+   "seed2": 4,
+   "pooled": 8,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "weekly_mom_b1",
+   "block": 28,
+   "seed1": 6,
+   "seed2": 5,
+   "pooled": 11,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "meanrev_short_b1",
+   "block": 7,
+   "seed1": 7,
+   "seed2": 7,
+   "pooled": 14,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "meanrev_short_b1",
+   "block": 14,
+   "seed1": 7,
+   "seed2": 9,
+   "pooled": 16,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "A",
+   "hyp": "meanrev_short_b1",
+   "block": 28,
+   "seed1": 8,
+   "seed2": 12,
+   "pooled": 20,
+   "ok": false,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "ema50_200",
+   "block": 7,
+   "seed1": 5,
+   "seed2": 4,
+   "pooled": 9,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "ema50_200",
+   "block": 14,
+   "seed1": 5,
+   "seed2": 6,
+   "pooled": 11,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "ema50_200",
+   "block": 28,
+   "seed1": 5,
+   "seed2": 6,
+   "pooled": 11,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "breakout20",
+   "block": 7,
+   "seed1": 7,
+   "seed2": 4,
+   "pooled": 11,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "breakout20",
+   "block": 14,
+   "seed1": 9,
+   "seed2": 6,
+   "pooled": 15,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "breakout20",
+   "block": 28,
+   "seed1": 9,
+   "seed2": 9,
+   "pooled": 18,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "weekly_mom_b1",
+   "block": 7,
+   "seed1": 4,
+   "seed2": 5,
+   "pooled": 9,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "weekly_mom_b1",
+   "block": 14,
+   "seed1": 7,
+   "seed2": 7,
+   "pooled": 14,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "weekly_mom_b1",
+   "block": 28,
+   "seed1": 8,
+   "seed2": 7,
+   "pooled": 15,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "meanrev_short_b1",
+   "block": 7,
+   "seed1": 5,
+   "seed2": 6,
+   "pooled": 11,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "meanrev_short_b1",
+   "block": 14,
+   "seed1": 4,
+   "seed2": 6,
+   "pooled": 10,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "B",
+   "hyp": "meanrev_short_b1",
+   "block": 28,
+   "seed1": 5,
+   "seed2": 8,
+   "pooled": 13,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "ema50_200",
+   "block": 7,
+   "seed1": 1,
+   "seed2": 5,
+   "pooled": 6,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "ema50_200",
+   "block": 14,
+   "seed1": 5,
+   "seed2": 6,
+   "pooled": 11,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "ema50_200",
+   "block": 28,
+   "seed1": 8,
+   "seed2": 8,
+   "pooled": 16,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "breakout20",
+   "block": 7,
+   "seed1": 7,
+   "seed2": 5,
+   "pooled": 12,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "breakout20",
+   "block": 14,
+   "seed1": 8,
+   "seed2": 5,
+   "pooled": 13,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "breakout20",
+   "block": 28,
+   "seed1": 11,
+   "seed2": 5,
+   "pooled": 16,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "weekly_mom_b1",
+   "block": 7,
+   "seed1": 6,
+   "seed2": 6,
+   "pooled": 12,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "weekly_mom_b1",
+   "block": 14,
+   "seed1": 7,
+   "seed2": 7,
+   "pooled": 14,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "weekly_mom_b1",
+   "block": 28,
+   "seed1": 9,
+   "seed2": 8,
+   "pooled": 17,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "meanrev_short_b1",
+   "block": 7,
+   "seed1": 5,
+   "seed2": 17,
+   "pooled": 22,
+   "ok": false,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "meanrev_short_b1",
+   "block": 14,
+   "seed1": 4,
+   "seed2": 14,
+   "pooled": 18,
+   "ok": false,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "C",
+   "hyp": "meanrev_short_b1",
+   "block": 28,
+   "seed1": 8,
+   "seed2": 16,
+   "pooled": 24,
+   "ok": false,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "ema50_200",
+   "block": 7,
+   "seed1": 11,
+   "seed2": 3,
+   "pooled": 14,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "ema50_200",
+   "block": 14,
+   "seed1": 12,
+   "seed2": 3,
+   "pooled": 15,
+   "ok": false,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "ema50_200",
+   "block": 28,
+   "seed1": 10,
+   "seed2": 6,
+   "pooled": 16,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "breakout20",
+   "block": 7,
+   "seed1": 9,
+   "seed2": 6,
+   "pooled": 15,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "breakout20",
+   "block": 14,
+   "seed1": 10,
+   "seed2": 5,
+   "pooled": 15,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "breakout20",
+   "block": 28,
+   "seed1": 11,
+   "seed2": 9,
+   "pooled": 20,
+   "ok": false,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "weekly_mom_b1",
+   "block": 7,
+   "seed1": 3,
+   "seed2": 8,
+   "pooled": 11,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "weekly_mom_b1",
+   "block": 14,
+   "seed1": 4,
+   "seed2": 8,
+   "pooled": 12,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "weekly_mom_b1",
+   "block": 28,
+   "seed1": 4,
+   "seed2": 9,
+   "pooled": 13,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "meanrev_short_b1",
+   "block": 7,
+   "seed1": 8,
+   "seed2": 4,
+   "pooled": 12,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "meanrev_short_b1",
+   "block": 14,
+   "seed1": 8,
+   "seed2": 4,
+   "pooled": 12,
+   "ok": true,
+   "worlds_per_seed": 986
+  },
+  {
+   "type": "D",
+   "hyp": "meanrev_short_b1",
+   "block": 28,
+   "seed1": 9,
+   "seed2": 7,
+   "pooled": 16,
+   "ok": true,
+   "worlds_per_seed": 986
+  }
+ ],
+ "power": {},
+ "mde": {},
+ "diag_mean_gross_active": {
+  "A|1": {
+   "ema50_200": [
+    0.0030614531303675423,
+    3.7834558507847722e-06,
+    986
+   ],
+   "breakout20": [
+    0.0022054338702721912,
+    3.172404696674594e-06,
+    986
+   ],
+   "weekly_mom_b1": [
+    -0.004389435607440829,
+    5.147597622350202e-05,
+    986
+   ],
+   "meanrev_short_b1": [
+    0.004002825421531168,
+    1.007820859070358e-06,
+    986
+   ]
+  },
+  "A|2": {
+   "ema50_200": [
+    -0.0008799699564054787,
+    4.015998681965531e-06,
+    986
+   ],
+   "breakout20": [
+    0.0017754084243321365,
+    3.4903665297125767e-06,
+    986
+   ],
+   "weekly_mom_b1": [
+    -0.011501607968862878,
+    4.981895292309884e-05,
+    986
+   ],
+   "meanrev_short_b1": [
+    0.0033359314175935117,
+    1.046789750003624e-06,
+    986
+   ]
+  },
+  "B|1": {
+   "ema50_200": [
+    -0.0017594814541307057,
+    4.3356457989163016e-06,
+    986
+   ],
+   "breakout20": [
+    0.0024010453562778216,
+    3.3474075151457593e-06,
+    986
+   ],
+   "weekly_mom_b1": [
+    -0.001358746451990825,
+    5.6821229545715996e-05,
+    986
+   ],
+   "meanrev_short_b1": [
+    0.0023115502487350424,
+    8.608186390414675e-07,
+    986
+   ]
+  },
+  "B|2": {
+   "ema50_200": [
+    0.0012781037051623554,
+    4.02121585407249e-06,
+    986
+   ],
+   "breakout20": [
+    0.0006526398020524674,
+    3.3745026310646764e-06,
+    986
+   ],
+   "weekly_mom_b1": [
+    -0.001383146389275748,
+    5.332486647179786e-05,
+    986
+   ],
+   "meanrev_short_b1": [
+    0.0008855464951730514,
+    9.441666831923499e-07,
+    986
+   ]
+  },
+  "C|1": {
+   "ema50_200": [
+    -0.0053513586404280175,
+    3.392441473787525e-06,
+    986
+   ],
+   "breakout20": [
+    9.080590216316624e-05,
+    3.2264645708846293e-06,
+    986
+   ],
+   "weekly_mom_b1": [
+    0.0017562530406535375,
+    4.8393590404957477e-05,
+    986
+   ],
+   "meanrev_short_b1": [
+    0.0033893522199430607,
+    8.624946048591423e-07,
+    986
+   ]
+  },
+  "C|2": {
+   "ema50_200": [
+    -0.0008100076830207352,
+    3.4458473599791934e-06,
+    986
+   ],
+   "breakout20": [
+    -0.003635130809102703,
+    3.4527983365589893e-06,
+    986
+   ],
+   "weekly_mom_b1": [
+    0.001421450135760366,
+    5.5965433714790655e-05,
+    986
+   ],
+   "meanrev_short_b1": [
+    0.00503277282088996,
+    1.015850709379884e-06,
+    986
+   ]
+  },
+  "D|1": {
+   "ema50_200": [
+    -0.002518333026732788,
+    3.6664777980028817e-06,
+    986
+   ],
+   "breakout20": [
+    -0.002383384240509354,
+    3.5557201837487565e-06,
+    986
+   ],
+   "weekly_mom_b1": [
+    -0.011878173487026931,
+    5.635740665513716e-05,
+    986
+   ],
+   "meanrev_short_b1": [
+    0.0008786911013047596,
+    8.268206249349607e-07,
+    986
+   ]
+  },
+  "D|2": {
+   "ema50_200": [
+    -0.006973073580382468,
+    3.6073594788780434e-06,
+    986
+   ],
+   "breakout20": [
+    -0.0005880764931775937,
+    3.6385710717578115e-06,
+    986
+   ],
+   "weekly_mom_b1": [
+    -0.005336241171032558,
+    5.4344621392737274e-05,
+    986
+   ],
+   "meanrev_short_b1": [
+    0.0013544733969638994,
+    8.576578637509463e-07,
+    986
+   ]
+  }
+ },
+ "flags": {
+  "clipped": 2780,
+  "nonfinite": 0,
+  "maxret": {
+   "A": 1.0,
+   "B": 1.0,
+   "C": 1.0,
+   "D": 1.0
+  }
+ },
+ "finished_utc": "2026-10-14T22:40:51Z"
+}

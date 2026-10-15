@@ -5082,8 +5082,64 @@ def print_paper_prediction_result(result, horizon="24H"):
             "Final action did not produce a stored paper trade."
         )
 
+    _shadow_display(result)
+
     print("\n" + live_execution_line("BLOCKED"))
     print(c("=" * 60, CYAN))
+
+
+def _shadow_display(result):
+    """Display only: unvalidated shadow-strategy stance next to a prediction. Never changes any decision."""
+    try:
+        import sqlite3, json, time, urllib.request
+        sym = str((result or {}).get("symbol", "")).upper()
+        print("")
+        print(c("SHADOW STRATEGIES (unvalidated, paper only, NOT used in this call)", GRAY))
+        db = os.path.join(os.path.dirname(os.path.abspath(__file__)), "shadow.db")
+        if not os.path.exists(db):
+            print("  no shadow log yet (run shadow_log.py)")
+            return
+        con = sqlite3.connect("file:" + db + "?mode=ro", uri=True)
+        run = con.execute("select applies_date, flag from shadow_runs order by applies_date desc limit 1").fetchone()
+        if not run:
+            print("  shadow log is empty")
+            return
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        stale = "" if run[0] >= today else "  (NOT today's row)"
+        print("  latest row: %s (%s)%s" % (run[0], run[1], stale))
+        rows = con.execute("select strategy, weight from shadow_signals where applies_date=? and symbol=?", (run[0], sym)).fetchall()
+        if not rows:
+            print("  %s is not in the 40-coin shadow universe" % sym)
+            return
+        parts, longs, shorts = [], 0, 0
+        for st, w in rows:
+            tag = "LONG" if w > 1e-12 else ("SHORT" if w < -1e-12 else "flat")
+            longs += tag == "LONG"
+            shorts += tag == "SHORT"
+            parts.append("%s %s" % (st, tag))
+        print("  " + " | ".join(parts))
+        fa = str((result or {}).get("final_action", "")).upper()
+        if "BUY" in fa or "LONG" in fa:
+            ag = "%d of 4 shadow strategies long" % longs
+        elif "SELL" in fa or "SHORT" in fa:
+            ag = "%d of 4 shadow strategies short" % shorts
+        else:
+            ag = "no directional call to compare"
+        print("  vs Sentinel final action (%s): %s" % (fa or "n/a", ag))
+        rng = "n/a"
+        for sy in (sym, "1000" + sym):
+            try:
+                u = "https://fapi.binance.com/fapi/v1/klines?symbol=%s&interval=1d&limit=31" % sy
+                r = urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"}), timeout=6)
+                k = json.load(r)[:-1]
+                v = sorted((float(x[2]) - float(x[3])) / float(x[1]) for x in k)
+                rng = "%.1f%%" % (100 * v[len(v) // 2])
+                break
+            except Exception:
+                continue
+        print("  typical daily range, 30-day median: %s (volatility, not a target)" % rng)
+    except Exception as e:
+        print("  shadow display unavailable: " + str(e)[:60])
 
 
 # ============================================================

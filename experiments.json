@@ -342,5 +342,195 @@
   ],
   "prev_hash": "d20e6802057d1f4175bbf4c46078c1ad613f0cf0e863d85586758bcef84c365d",
   "id": "E006"
+ },
+ {
+  "timestamp": "2026-10-15T09:07:07.152520+00:00",
+  "type": "descriptive_screen",
+  "name": "batch1 daily-bar real descriptive run (no inference)",
+  "status": "DESCRIPTIVE ONLY: CALIBRATION DID NOT LICENSE INFERENCE",
+  "spec_hash": "7fc3c8c279814d4d72c144a27d9998a489b9fe05a41cb633cd60f1be4d934b10",
+  "calibration_entry": "E006",
+  "result_file_sha256": "3315b6698b15effea6757b5293b381aa1c0f8512325f2732ad282566ed425aca",
+  "data_hash": "b0832b5e600b6471d89b04d1095b7de751913e72794bf718288fe7584d5e4c55",
+  "code_sha256": {
+   "batch1_engine.py": "7bbd78e2e9899ac702c1ef2e3f49d887284695f9dc801f5aef9c1562d4bb0852",
+   "batch1_real.py": "7b8b7cd67064a02554023a79c5ffb9ec8dec7510cd9339d31ac5c2c264836a91"
+  },
+  "benchmark": {
+   "mean_daily": 0.0009979303639344784,
+   "annualized": 0.439164818667509,
+   "total_compounded": 0.37490809531253966,
+   "max_drawdown": -0.8342042193086574,
+   "n_days": 1094
+  },
+  "results": {
+   "ema50_200": {
+    "first_evaluable_row": 200,
+    "n_days": 894,
+    "mean_daily_net": -0.0002448191599816902,
+    "annualized": -0.08549279592887371,
+    "total_compounded": -0.28420817123579467,
+    "max_drawdown": -0.5163887706742559,
+    "mean_active": 3.6469372245168954e-05,
+    "sd_active": 0.002969551774915709,
+    "mde_best_case": 0.0003394643723557888,
+    "avg_net_exposure": 0.2833333333333333,
+    "avg_gross_exposure": 0.2833333333333333,
+    "mean_daily_turnover": 0.012769606697080162,
+    "yearly_mean_active": {
+     "2024": [
+      248,
+      9.64652633863715e-06
+     ],
+     "2025": [
+      365,
+      0.00017256211372247785
+     ],
+     "2026": [
+      281,
+      -0.00011663306495909384
+     ]
+    },
+    "first_half_active": 6.0008762839375746e-05,
+    "second_half_active": 1.2929981650962185e-05,
+    "stress_mean_active": 3.0084568896628904e-05,
+    "stress_mean_net": -0.0002512039633302301,
+    "bench_mean_same_days": -7.647348241227272e-05
+   },
+   "breakout20": {
+    "first_evaluable_row": 21,
+    "n_days": 1073,
+    "mean_daily_net": 0.0007664471120704462,
+    "annualized": 0.32266156367603704,
+    "total_compounded": 0.9504664892805939,
+    "max_drawdown": -0.42299315601772447,
+    "mean_active": 2.4256415922930713e-05,
+    "sd_active": 0.0024782638800092543,
+    "mde_best_case": 0.0002585947744366567,
+    "avg_net_exposure": 0.3290074557315937,
+    "avg_gross_exposure": 0.3290074557315937,
+    "mean_daily_turnover": 0.04980451546253215,
+    "yearly_mean_active": {
+     "2023": [
+      61,
+      -0.00043404155830946905
+     ],
+     "2024": [
+      366,
+      5.017658377474127e-05
+     ],
+     "2025": [
+      365,
+      8.44488391579826e-05
+     ],
+     "2026": [
+      281,
+      1.1797912412680788e-05
+     ]
+    },
+    "first_half_active": -5.093492178664202e-06,
+    "second_half_active": 5.355166870217629e-05,
+    "stress_mean_active": -6.458418083352881e-07,
+    "stress_mean_net": 0.00074154485433918,
+    "bench_mean_same_days": 0.0008065443047843268
+   },
+   "weekly_mom_b1": {
+    "first_evaluable_row": 12,
+    "n_days": 1082,
+    "mean_daily_net": 0.0001636781557950444,
+    "annualized": 0.06155799766029202,
+    "total_compounded": 0.100033174866764,
+    "max_drawdown": -0.3371180560126521,
+    "mean_active": 0.0001636781557950444,
+    "sd_active": 0.01230244006782547,
+    "mde_best_case": 0.0012783497357857743,
+    "avg_net_exposure": 0.0,
+    "avg_gross_exposure": 1.0,
+    "mean_daily_turnover": 0.2521912885961212,
+    "yearly_mean_active": {
+     "2023": [
+      70,
+      0.0004581813773553976
+     ],
+     "2024": [
+      366,
+      0.0007253105860324272
+     ],
+     "2025": [
+      365,
+      0.00032407181645918053
+     ],
+     "2026": [
+      281,
+      -0.0008495473997868653
+     ]
+    },
+    "first_half_active": 0.0004693726381807546,
+    "second_half_active": -0.00014201632659066574,
+    "stress_mean_active": 3.758251149698385e-05,
+    "stress_mean_net": 3.758251149698385e-05,
+    "bench_mean_same_days": 0.0009301626370327025
+   },
+   "meanrev_short_b1": {
+    "first_evaluable_row": 63,
+    "n_days": 1031,
+    "mean_daily_net": 0.000299936411275497,
+    "annualized": 0.11567586180482392,
+    "total_compounded": 0.30877113084179486,
+    "max_drawdown": -0.12617155539310865,
+    "mean_active": -6.325406509214434e-05,
+    "sd_active": 0.001081219896260145,
+    "mde_best_case": 0.00011509507879827308,
+    "avg_net_exposure": 0.050775945683802136,
+    "avg_gross_exposure": 0.050775945683802136,
+    "mean_daily_turnover": 0.05946270737805427,
+    "yearly_mean_active": {
+     "2023": [
+      19,
+      -0.00013137746755758365
+     ],
+     "2024": [
+      366,
+      -5.5038686899929694e-05
+     ],
+     "2025": [
+      365,
+      -3.125743977908519e-05
+     ],
+     "2026": [
+      281,
+      -0.00011090976619810093
+     ]
+    },
+    "first_half_active": -4.988135991636553e-05,
+    "second_half_active": -7.660085417262124e-05,
+    "stress_mean_active": -9.298541878117146e-05,
+    "stress_mean_net": 0.00027020505758646997,
+    "bench_mean_same_days": 0.0004118117508350626
+   }
+  },
+  "ratio_abs_mean_active_to_best_case_mde": {
+   "ema50_200": 0.107,
+   "breakout20": 0.094,
+   "weekly_mom_b1": 0.128,
+   "meanrev_short_b1": 0.55
+  },
+  "enj": {
+   "mean_daily_contribution": -9.220520189540414e-06,
+   "share_of_benchmark_mean": -0.009239642887693324,
+   "max_daily_return": 0.49966599866399464
+  },
+  "observation": "Window 2023-10-11 to 2026-10-08, 40 coins, 1094 days, 0 invalid coin-days. Benchmark (equal weight, no costs): annualized 43.9%, total 37.5%, max drawdown -83.4%. Costs 0.10% per side, stress 0.15%. ema50_200: 894 days, annualized -8.5%, mean active +0.0036%/day, best-case MDE 0.0339%/day, max drawdown -51.6%, avg net exposure 0.28, stress active +0.0030%/day, halves +0.0060% / +0.0013% | breakout20: 1073 days, annualized 32.3%, mean active +0.0024%/day, best-case MDE 0.0259%/day, max drawdown -42.3%, avg net exposure 0.33, stress active -0.0001%/day, halves -0.0005% / +0.0054% | weekly_mom_b1: 1082 days, annualized 6.2%, mean active +0.0164%/day, best-case MDE 0.1278%/day, max drawdown -33.7%, avg net exposure 0.00, stress active +0.0038%/day, halves +0.0469% / -0.0142% | meanrev_short_b1: 1031 days, annualized 11.6%, mean active -0.0063%/day, best-case MDE 0.0115%/day, max drawdown -12.6%, avg net exposure 0.05, stress active -0.0093%/day, halves -0.0050% / -0.0077%",
+  "interpretation": "No inference was licensed (E006), so the pass bar does not apply and nothing is reported as passing or failing. Every mean active return is smaller than its best-case minimum detectable effect, so none is distinguishable from zero. Sign changes between halves or at stress costs argue against reading anything into the point estimates. Nothing is integrated or approved.",
+  "limitations": [
+   "seen data (fade.db was used in E001 and E002)",
+   "survivorship: the 40 coins are today listed survivors",
+   "weekly_mom shorts carry no funding cost; longs carry none either",
+   "annualization uses the mean daily return, which flatters compounded results",
+   "the best-case MDE assumes independent days; the real value is larger",
+   "one run, no tuning, no rerun"
+  ],
+  "prev_hash": "d5cf9605abcb6e0fb5992dac83df655fa42071441932244213a34102b7ce18e9",
+  "id": "E007"
  }
 ]

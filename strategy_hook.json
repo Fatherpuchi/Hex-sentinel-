@@ -1,0 +1,13 @@
+{
+  "enabled": false,
+  "purpose": "marker for letting a validated strategy influence Sentinel predictions; NOTHING READS THIS FILE YET, so it changes nothing today",
+  "set_to_true_only_if_all": [
+    "a forward spec for that strategy was frozen BEFORE any forward data, with its pass bar",
+    "at least 14 weeks (likely 26) of shadow rows flagged ok, judged only on rows created before the day they apply to",
+    "the pass bar was met, with the test licensed by a passing calibration",
+    "the user and the reviewer approved a separate text spec for how it may influence a prediction",
+    "the hook code is a reviewed anchored patch with a .bak, paper only, live execution stays BLOCKED"
+  ],
+  "default_if_nothing_qualifies": "Sentinel keeps predicting, scanning and logging paper calls; shadow strategies stay display-only",
+  "created": "2026-10-15"
+}

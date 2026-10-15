@@ -1,0 +1,217 @@
+{
+ "wording": "The calibration did not license inference. Descriptive screen on seen data; not evidence of an edge.",
+ "batch1_spec_hash": "7fc3c8c279814d4d72c144a27d9998a489b9fe05a41cb633cd60f1be4d934b10",
+ "engine_hash": "7bbd78e2e9899ac702c1ef2e3f49d887284695f9dc801f5aef9c1562d4bb0852",
+ "data_hash": "b0832b5e600b6471d89b04d1095b7de751913e72794bf718288fe7584d5e4c55",
+ "window": [
+  "2023-10-11",
+  "2026-10-08"
+ ],
+ "invalid_coin_days": 0,
+ "cost_per_side": 0.001,
+ "stress_per_side": 0.0015,
+ "benchmark": {
+  "mean_daily": 0.0009979303639344784,
+  "annualized": 0.439164818667509,
+  "total_compounded": 0.37490809531253966,
+  "max_drawdown": -0.8342042193086574,
+  "n_days": 1094
+ },
+ "strategies": {
+  "ema50_200": {
+   "first_evaluable_row": 200,
+   "n_days": 894,
+   "mean_daily_net": -0.0002448191599816902,
+   "annualized": -0.08549279592887371,
+   "total_compounded": -0.28420817123579467,
+   "max_drawdown": -0.5163887706742559,
+   "mean_active": 3.6469372245168954e-05,
+   "sd_active": 0.002969551774915709,
+   "mde_best_case": 0.0003394643723557888,
+   "avg_net_exposure": 0.2833333333333333,
+   "avg_gross_exposure": 0.2833333333333333,
+   "mean_daily_turnover": 0.012769606697080162,
+   "yearly_mean_active": {
+    "2024": [
+     248,
+     9.64652633863715e-06
+    ],
+    "2025": [
+     365,
+     0.00017256211372247785
+    ],
+    "2026": [
+     281,
+     -0.00011663306495909384
+    ]
+   },
+   "first_half_active": 6.0008762839375746e-05,
+   "second_half_active": 1.2929981650962185e-05,
+   "stress_mean_active": 3.0084568896628904e-05,
+   "stress_mean_net": -0.0002512039633302301,
+   "bench_mean_same_days": -7.647348241227272e-05
+  },
+  "breakout20": {
+   "first_evaluable_row": 21,
+   "n_days": 1073,
+   "mean_daily_net": 0.0007664471120704462,
+   "annualized": 0.32266156367603704,
+   "total_compounded": 0.9504664892805939,
+   "max_drawdown": -0.42299315601772447,
+   "mean_active": 2.4256415922930713e-05,
+   "sd_active": 0.0024782638800092543,
+   "mde_best_case": 0.0002585947744366567,
+   "avg_net_exposure": 0.3290074557315937,
+   "avg_gross_exposure": 0.3290074557315937,
+   "mean_daily_turnover": 0.04980451546253215,
+   "yearly_mean_active": {
+    "2023": [
+     61,
+     -0.00043404155830946905
+    ],
+    "2024": [
+     366,
+     5.017658377474127e-05
+    ],
+    "2025": [
+     365,
+     8.44488391579826e-05
+    ],
+    "2026": [
+     281,
+     1.1797912412680788e-05
+    ]
+   },
+   "first_half_active": -5.093492178664202e-06,
+   "second_half_active": 5.355166870217629e-05,
+   "stress_mean_active": -6.458418083352881e-07,
+   "stress_mean_net": 0.00074154485433918,
+   "bench_mean_same_days": 0.0008065443047843268
+  },
+  "weekly_mom_b1": {
+   "first_evaluable_row": 12,
+   "n_days": 1082,
+   "mean_daily_net": 0.0001636781557950444,
+   "annualized": 0.06155799766029202,
+   "total_compounded": 0.100033174866764,
+   "max_drawdown": -0.3371180560126521,
+   "mean_active": 0.0001636781557950444,
+   "sd_active": 0.01230244006782547,
+   "mde_best_case": 0.0012783497357857743,
+   "avg_net_exposure": 0.0,
+   "avg_gross_exposure": 1.0,
+   "mean_daily_turnover": 0.2521912885961212,
+   "yearly_mean_active": {
+    "2023": [
+     70,
+     0.0004581813773553976
+    ],
+    "2024": [
+     366,
+     0.0007253105860324272
+    ],
+    "2025": [
+     365,
+     0.00032407181645918053
+    ],
+    "2026": [
+     281,
+     -0.0008495473997868653
+    ]
+   },
+   "first_half_active": 0.0004693726381807546,
+   "second_half_active": -0.00014201632659066574,
+   "stress_mean_active": 3.758251149698385e-05,
+   "stress_mean_net": 3.758251149698385e-05,
+   "bench_mean_same_days": 0.0009301626370327025
+  },
+  "meanrev_short_b1": {
+   "first_evaluable_row": 63,
+   "n_days": 1031,
+   "mean_daily_net": 0.000299936411275497,
+   "annualized": 0.11567586180482392,
+   "total_compounded": 0.30877113084179486,
+   "max_drawdown": -0.12617155539310865,
+   "mean_active": -6.325406509214434e-05,
+   "sd_active": 0.001081219896260145,
+   "mde_best_case": 0.00011509507879827308,
+   "avg_net_exposure": 0.050775945683802136,
+   "avg_gross_exposure": 0.050775945683802136,
+   "mean_daily_turnover": 0.05946270737805427,
+   "yearly_mean_active": {
+    "2023": [
+     19,
+     -0.00013137746755758365
+    ],
+    "2024": [
+     366,
+     -5.5038686899929694e-05
+    ],
+    "2025": [
+     365,
+     -3.125743977908519e-05
+    ],
+    "2026": [
+     281,
+     -0.00011090976619810093
+    ]
+   },
+   "first_half_active": -4.988135991636553e-05,
+   "second_half_active": -7.660085417262124e-05,
+   "stress_mean_active": -9.298541878117146e-05,
+   "stress_mean_net": 0.00027020505758646997,
+   "bench_mean_same_days": 0.0004118117508350626
+  }
+ },
+ "corr_order": [
+  "bh_equal_weight",
+  "ema50_200",
+  "breakout20",
+  "weekly_mom_b1",
+  "meanrev_short_b1"
+ ],
+ "corr": [
+  [
+   1.0,
+   0.725,
+   0.643,
+   -0.183,
+   0.351
+  ],
+  [
+   0.725,
+   1.0,
+   0.491,
+   -0.117,
+   0.226
+  ],
+  [
+   0.643,
+   0.491,
+   1.0,
+   0.092,
+   0.071
+  ],
+  [
+   -0.183,
+   -0.117,
+   0.092,
+   1.0,
+   -0.119
+  ],
+  [
+   0.351,
+   0.226,
+   0.071,
+   -0.119,
+   1.0
+  ]
+ ],
+ "corr_shared_days": 894,
+ "enj": {
+  "mean_daily_contribution": -9.220520189540414e-06,
+  "share_of_benchmark_mean": -0.009239642887693324,
+  "max_daily_return": 0.49966599866399464
+ },
+ "finished_utc": "2026-10-15T08:18:31Z"
+}

@@ -10254,7 +10254,7 @@ def market_menu():
         try:
             import subprocess as _sp, sys as _sys
             _s = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stocks.py")
-            _q = input("\nStocks: gainers / losers / volume / us / hk / kr / commodity / preipo / all / or a ticker like aapl [gainers]: ").strip() or "gainers"
+            _q = "menu"
             _sp.run([_sys.executable, _s] + _q.split())
         except Exception as e:
             print("stocks error: " + str(e))
@@ -11329,7 +11329,7 @@ def demo_interface():
     print("  cache clear → Clear the API response cache")
     print("  rating   → Composite rating log (rating performance [hours])")
     print("  chart <coin> [interval] [candles] → Clean HTML candle chart (EMA20/50, opens in browser)")
-    print("  stocks [gainers|losers|volume|us|hk|commodity|all|<ticker>] → Binance stock perpetuals (paper research only)")
+    pass
     print("  lab play <set> [each] → Play the prediction game (lab mine <set> = your record)")
     print("  lab list|report|summary|verify <set> → Market Lab results (own lab.db)")
     print("  quit     → Exit demo")
@@ -11367,7 +11367,7 @@ def demo_interface():
                 print("  cache    → API cache / rate-limit protection status")
                 print("  cache clear → Clear the API response cache")
                 print("  chart <coin> [interval] [candles] → Clean HTML candle chart (EMA20/50, opens in browser)")
-                print("  stocks [gainers|losers|volume|us|hk|commodity|all|<ticker>] → Binance stock perpetuals (paper research only)")
+                pass
                 print("  lab play <set> [each] → Play the prediction game (lab mine <set> = your record)")
                 print("  lab list|report|summary|verify <set> → Market Lab results (own lab.db)")
                 print("  help / commands → Show this list again")

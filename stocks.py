@@ -32,14 +32,20 @@ def load():
 
 def show(rows, title, n):
     print(f"{C}{title}{X}")
-    print(f"{D}{'symbol':16s} {'type':10s} {'price':>12s} {'24h':>8s} {'24h vol $':>14s} {'days listed':>11s}{X}")
+    print(f"{D}{'symbol':20s} {'type':10s} {'price':>12s} {'24h':>8s} {'24h vol $':>14s} {'days listed':>11s}{X}")
     for r in rows[:n]:
         col = G if r["chg"] > 0 else (R if r["chg"] < 0 else X)
-        print(f"{col}{r['sym']:16s} {r['kind']:10s} {r['px']:12.4f} {r['chg']:+7.2f}% {r['vol']:14,.0f} {r['age']:11.0f}{X}{D}{' thin' if r['vol'] < 1e6 else ''}{' new' if r['age'] < 30 else ''}{X}")
+        print(f"{col}{r['sym']:20s} {r['kind']:10s} {r['px']:12.4f} {r['chg']:+7.2f}% {r['vol']:14,.0f} {r['age']:11.0f}{X}{D}{' thin' if r['vol'] < 1e6 else ''}{' new' if r['age'] < 30 else ''}{X}")
     print(f"{D}'thin' = under $1M traded in 24h, 'new' = listed under 30 days. The stock's own market is closed nights and weekends. Paper research only.{X}")
 
 
+ALIASES = {"apple":"AAPL","tesla":"TSLA","nvidia":"NVDA","amazon":"AMZN","google":"GOOGL","alphabet":"GOOGL","microsoft":"MSFT","meta":"META","facebook":"META","netflix":"NFLX","amd":"AMD","intel":"INTC","oracle":"ORCL","adobe":"ADBE","coinbase":"COIN","microstrategy":"MSTR","strategy":"MSTR","paypal":"PYPL","disney":"DIS","nike":"NKE","boeing":"BA","walmart":"WMT","costco":"COST","visa":"V","mastercard":"MA","jpmorgan":"JPM","goldman":"GS","exxon":"XOM","chevron":"CVX","pfizer":"PFE","uber":"UBER","airbnb":"ABNB","palantir":"PLTR","broadcom":"AVGO","qualcomm":"QCOM","micron":"MU","salesforce":"CRM","spotify":"SPOT","shopify":"SHOP","robinhood":"HOOD","amc":"AMC"}
+
+
 def resolve(text, rows):
+    t = "".join(text.lower().split())
+    if t in ALIASES:
+        text = ALIASES[t]
     sym = "".join(text.upper().split())
     sym = sym if sym.endswith("USDT") else sym + "USDT"
     names = [r["sym"] for r in rows]
@@ -154,6 +160,102 @@ def score():
     print(f"{D}scored: {h} hit, {mi} miss ({h + mi} counted). Under 100 counted calls this says nothing. Compare with always-UP before believing any rate.{X}")
 
 
+def africa(arg=""):
+    import urllib.request, json
+    try:
+        req = urllib.request.Request("https://dev.kwayisi.org/apis/gse/live", headers={"User-Agent": "Mozilla/5.0"})
+        d = json.load(urllib.request.urlopen(req, timeout=15))
+    except Exception as e:
+        return print("Africa data unavailable: " + repr(e)[:100])
+    a = arg.strip().lower()
+    if a in ("", "volume"):
+        d = sorted(d, key=lambda x: -x["volume"]); t = "by volume"
+    elif a == "gainers":
+        d = sorted([x for x in d if x["volume"] > 0], key=lambda x: -x["change"]); t = "gainers (volume > 0 only)"
+    elif a == "losers":
+        d = sorted([x for x in d if x["volume"] > 0], key=lambda x: x["change"]); t = "losers (volume > 0 only)"
+    elif a == "all":
+        d = sorted(d, key=lambda x: x["name"]); t = "all tickers"
+    else:
+        d = [x for x in d if a in x["name"].lower()]; t = "match " + arg
+        if not d:
+            return print("No GSE ticker matches '%s'." % arg)
+    print(C + "Ghana Stock Exchange (GSE), " + t + " - external data, research only, not on Binance" + X)
+    print("%-12s %10s %10s %12s" % ("ticker", "price GHS", "chg(unit?)", "volume"))
+    for x in d[:25]:
+        col = D if x["volume"] == 0 else (G if x["change"] > 0 else (R if x["change"] < 0 else X))
+        print("%s%-12s %10.2f %10.2f %12.0f  %s%s" % (col, x["name"], x["price"], x["change"], x["volume"], "no trades" if x["volume"] == 0 else "", X))
+    print("Source: dev.kwayisi.org (delayed, no timestamp). A no-trade price is stale, not a 0% return. No predictions.")
+
+
+def africa_menu():
+    while True:
+        print("=" * 60)
+        print(C + "AFRICA - GHANA STOCK EXCHANGE (GSE)" + X)
+        print("External data, research only, not on Binance")
+        for k, v in (("1", "Top Gainers"), ("2", "Top Losers"), ("3", "Highest Trading Volume"), ("4", "All GSE Stocks"), ("5", "Search by Ticker"), ("6", "Back")):
+            print("%s%3s.%s %s" % (C, k, X, v))
+        c = input("Choose an option: ").strip()
+        if c == "6": return
+        if c == "1": africa("gainers")
+        elif c == "2": africa("losers")
+        elif c == "3": africa("volume")
+        elif c == "4": africa("all")
+        elif c == "5":
+            q = input("GSE ticker (e.g. MTNGH): ").strip()
+            if q: africa(q)
+        else: print("Unknown option.")
+
+
+def region_menu():
+    rows = load()
+    groups = {"1": ("North America: US-listed equities and ETFs (incl. leveraged)", ("EQUITY",)), "2": ("Asia (Hong Kong, South Korea, China)", ("HK_EQUITY", "KR_EQUITY", "CN_EQUITY"))}
+    while True:
+        print("=" * 60)
+        print(C + "WORLD REGIONS" + X)
+        print("Binance contracts where listed; Africa is external data. Research only.")
+        for k, v in (("1", "North America: US-listed equities and ETFs (incl. leveraged)"), ("2", "Asia (Hong Kong, South Korea, China)"), ("3", "Europe (no separate market on Binance)"), ("4", "Africa - Ghana (external, not on Binance)"), ("5", "Back")):
+            print("%s%3s.%s %s" % (Y if k == "4" else C, k, X, v))
+        c = input("Choose an option: ").strip()
+        if c == "5": return
+        if c in groups:
+            show(sorted([r for r in rows if r["kind"] in groups[c][1]], key=lambda r: -r["vol"]), groups[c][0], 25)
+        elif c == "3":
+            print("No European market appears among Binance TradFi contract types (seen: " + ", ".join(sorted(set(r["kind"] for r in rows))) + ").")
+            print("Some EQUITY contracts may be European listings; not checked. No external European source verified yet.")
+        elif c == "4": africa_menu()
+        else: print("Unknown option.")
+
+
+def menu():
+    rows = load()
+    kinds = {"4": ("EQUITY", "US-listed equities and ETFs (incl. leveraged)"), "5": ("HK_EQUITY", "Hong Kong"), "6": ("KR_EQUITY", "South Korea"), "7": ("COMMODITY", "Commodities"), "8": ("PREMARKET", "Pre-IPO / premarket")}
+    while True:
+        print("=" * 60)
+        print(C + "HEX SENTINEL - TRADFI MARKETS" + X)
+        print("Market: Binance TradFi USDM Perpetuals | Mode: PAPER RESEARCH ONLY")
+        for k, v in (("1", "Top Gainers"), ("2", "Top Losers"), ("3", "Highest Trading Volume"), ("4", "US-listed equities and ETFs (incl. leveraged)"), ("5", "Hong Kong Stocks"), ("6", "South Korean Stocks"), ("7", "Commodities"), ("8", "Pre-IPO Markets"), ("9", "All Available Markets"), ("10", "Search by Ticker or Name (e.g. Apple)"), ("11", "Watchlist (not built yet)"), ("12", "Market Information"), ("13", "Back"), ("14", "World Regions (Africa = external data)"), ("15", "Exit")):
+            print("%s%3s.%s %s" % (Y if k == "14" else C, k, X, v))
+        c = input("Choose an option: ").strip().lower()
+        if c in ("13", "15"): return
+        if c == "1": show(sorted(rows, key=lambda r: -r["chg"]), "Biggest 24h gainers", 15)
+        elif c == "2": show(sorted(rows, key=lambda r: r["chg"]), "Biggest 24h losers", 15)
+        elif c == "3": show(sorted(rows, key=lambda r: -r["vol"]), "Highest 24h volume", 15)
+        elif c in kinds: show(sorted([r for r in rows if r["kind"] == kinds[c][0]], key=lambda r: -r["vol"]), kinds[c][1], 20)
+        elif c == "9": show(sorted(rows, key=lambda r: -r["vol"]), "All TradFi perpetuals by volume (%d)" % len(rows), 25)
+        elif c == "10":
+            sym, near = resolve(input("Ticker or name: "), rows)
+            if sym: show([x for x in rows if x["sym"] == sym], sym, 1)
+            else: print("Not found." + (" Did you mean: " + ", ".join(near) if near else ""))
+        elif c == "11": print("Watchlist is not built yet (needs its own spec).")
+        elif c == "12":
+            import collections
+            print(dict(collections.Counter(r["kind"] for r in rows)), "contracts:", len(rows))
+        elif c == "14": region_menu()
+        elif c == "a": africa_menu()
+        else: print("Unknown option.")
+
+
 def main(a):
     mode = a[0].lower() if a else "gainers"
     n = int(a[-1]) if len(a) > 1 and a[-1].isdigit() else 15
@@ -161,6 +263,10 @@ def main(a):
         return predict(" ".join(a[1:])) if len(a) > 1 else print("usage: stocks predict <ticker>")
     if mode in ("score", "log"):
         return score()
+    if mode == "menu":
+        return menu()
+    if mode == "africa":
+        return africa(" ".join(a[1:]))
     rows = load()
     if mode == "gainers":
         show(sorted(rows, key=lambda r: -r["chg"]), "Stock perpetuals: biggest 24h gainers", n)

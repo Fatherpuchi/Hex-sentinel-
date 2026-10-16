@@ -5098,6 +5098,9 @@ def _counterfactual_log(result):
             return
         if str(r.get("risk_status", "")) != "AI_CONSENSUS_LOW_RELIABILITY":
             return
+        if str(r.get("strategy_status", "")).upper() != "APPROVED" or str(r.get("signal", "")).upper() not in ("BUY", "SELL"):
+            print("  (counterfactual not logged: Stage 1 was not APPROVED with a BUY/SELL signal, so the call was already dead)")
+            return
         sym = str(r.get("symbol", "")).upper()
         cons = r.get("multi_ai_consensus")
         d, src = "", ""

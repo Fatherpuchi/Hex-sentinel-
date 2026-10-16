@@ -36,6 +36,15 @@ def baseline(sym, created_ms, direction):
 def has_table(con):
     return con.execute("select 1 from sqlite_master where type='table' and name='shadow_counterfactual'").fetchone() is not None
 
+def ensure_cols(con):
+    cols = [r[1] for r in con.execute('pragma table_info(shadow_counterfactual)')]
+    if 'excluded' not in cols:
+        con.execute('alter table shadow_counterfactual add column excluded integer default 0')
+    if 'excl_reason' not in cols:
+        con.execute('alter table shadow_counterfactual add column excl_reason text')
+    con.commit()
+
+
 def grade(con):
     now = int(time.time() * 1000)
     rows = con.execute('select id,symbol,direction,price,created_ms,due_ms from shadow_counterfactual where graded_utc is null and due_ms <= ? order by id', (now - 180000,)).fetchall()
@@ -55,10 +64,11 @@ def grade(con):
     print('graded', n, 'of', len(rows), 'due')
 
 def report(con):
-    tot = con.execute('select count(*) from shadow_counterfactual').fetchone()[0]
-    rows = con.execute('select was_right, baseline_rate from shadow_counterfactual where graded_utc is not null').fetchall()
+    tot = con.execute('select count(*) from shadow_counterfactual where coalesce(excluded,0)=0').fetchone()[0]
+    ex = con.execute('select count(*) from shadow_counterfactual where coalesce(excluded,0)=1').fetchone()[0]
+    rows = con.execute('select was_right, baseline_rate from shadow_counterfactual where graded_utc is not null and coalesce(excluded,0)=0').fetchall()
     n = len(rows)
-    print('%d logged, %d graded. Rule: read nothing before %d graded rows.' % (tot, n, NEED))
+    print('%d logged (+%d excluded, not counted), %d graded. Rule: read nothing before %d graded rows.' % (tot, ex, n, NEED))
     if n < NEED:
         return print('NOT READ: too few rows. No conclusions.')
     hits = sum(r[0] for r in rows)
@@ -84,6 +94,7 @@ def main():
     con = sqlite3.connect(dbp)
     if not has_table(con):
         return print('no counterfactual rows yet (table not created)')
+    ensure_cols(con)
     if mode == 'grade':
         grade(con)
     elif mode == 'report':

@@ -5373,6 +5373,106 @@ def get_batch_prediction_candidates(category, limit):
     raise ValueError(f"Unknown batch category: {category}")
 
 
+SP_COINS = ["AAVE", "ADA", "ALGO", "APT", "ARB", "ATOM", "AVAX", "BCH", "BNB", "BTC", "CRV", "DOGE", "DOT", "ENJ", "ETC", "ETH", "FET", "FIL", "GRT", "HBAR", "ICP", "INJ", "LINK", "LTC", "MANA", "NEAR", "OP", "RUNE", "SAND", "SEI", "SHIB", "SOL", "STX", "SUI", "TIA", "TRX", "UNI", "WLD", "XLM", "XRP"]
+SP_DELAY_SECONDS = 120
+SP_MAX_CONSECUTIVE_FAILS = 3
+SP_PROGRESS_FILE = "sp_progress.json"
+
+
+def run_sp(args):
+    """Secret command: run the normal predict pipeline over the 40 shadow-universe coins, one at a time. PAPER ONLY. Changes no decision."""
+    import json, inspect, sqlite3
+    here = os.path.dirname(os.path.abspath(__file__))
+    pf = os.path.join(here, SP_PROGRESS_FILE)
+    toks = [str(a).lower() for a in (args or [])]
+    dry = "dry" in toks
+    resume = "resume" in toks
+    fresh = "new" in toks
+    limit = None
+    for t in toks:
+        if t.isdigit():
+            limit = int(t)
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    state = {"date": today, "done": {}, "failed": {}}
+    if os.path.exists(pf):
+        try:
+            old = json.load(open(pf))
+            if old.get("date") == today:
+                state = old
+                state.setdefault("failed", {})
+        except Exception:
+            pass
+    if state["done"] and not resume and not fresh and not dry:
+        print("sp already ran %d coin(s) today (UTC). Use 'sp resume' to continue or 'sp new' to start over." % len(state["done"]))
+        return
+    if fresh:
+        state = {"date": today, "done": {}, "failed": {}}
+    todo = [x for x in SP_COINS if (x + "USDT") not in state["done"]]
+    if limit is not None:
+        todo = todo[:limit]
+    print("\n" + header("HEX SENTINEL - SP BATCH (40-coin universe)", "🧺"))
+    print("%d coin(s) to run, %d s pause between coins, about %.1f h if each takes ~3 min (unmeasured estimate)." % (len(todo), SP_DELAY_SECONDS, len(todo) * (SP_DELAY_SECONDS + 180) / 3600.0))
+    print("Paper only. Changes no decision. Ctrl+C stops and saves progress; 'sp resume' continues.")
+    if dry:
+        print("dry run, nothing executed: " + ", ".join(todo))
+        return
+    if not todo:
+        print("nothing to run (all 40 done today).")
+        return
+    try:
+        dup = "print_paper_prediction_result(" in inspect.getsource(run_legacy_pipeline)
+    except Exception:
+        dup = None
+        print("note: could not inspect the pipeline, so the shadow block will not be printed per coin")
+    start_utc = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    fails = 0
+    try:
+        for i, base in enumerate(todo, 1):
+            sym = base + "USDT"
+            print(c("\n[%d/%d] %s" % (i, len(todo), sym), CYAN, bold=True))
+            try:
+                result = run_legacy_pipeline(sym)
+                if not isinstance(result, dict):
+                    raise RuntimeError("no result returned")
+                if dup is False:
+                    _shadow_display(result)
+                    _counterfactual_log(result)
+                state["done"][sym] = {"signal": result.get("signal"), "final_action": result.get("final_action"), "risk_status": result.get("risk_status")}
+                state["failed"].pop(sym, None)
+                fails = 0
+            except (Exception, SystemExit) as exc:
+                msg = "Stage 1 pipeline failed (see output above)" if isinstance(exc, SystemExit) else str(exc)[:80]
+                print("WARNING %s failed: %s" % (sym, msg))
+                state["failed"][sym] = msg
+                fails += 1
+            json.dump(state, open(pf, "w"))
+            if fails >= SP_MAX_CONSECUTIVE_FAILS:
+                print("Stopping: %d coins in a row failed (provider or network problem?). Progress saved; 'sp resume' retries." % fails)
+                break
+            if i < len(todo):
+                for _ in range(SP_DELAY_SECONDS):
+                    time.sleep(1)
+    except KeyboardInterrupt:
+        json.dump(state, open(pf, "w"))
+        print("\nStopped by user. Progress saved; 'sp resume' continues.")
+    labels = {}
+    try:
+        con = sqlite3.connect("file:" + os.path.join(here, "shadow.db") + "?mode=ro", uri=True)
+        for sy, lab in con.execute("select symbol, label from shadow_combined where created_utc >= ? order by id", (start_utc,)):
+            labels[sy] = lab
+        con.close()
+    except Exception:
+        pass
+    print("\n" + header("SP - SUMMARY (today, UTC)", "📋"))
+    print("%-10s %-14s %-32s %s" % ("coin", "final action", "risk status", "combined view"))
+    for sy, d in state["done"].items():
+        print("%-10s %-14s %-32s %s" % (sy.replace("USDT", ""), str(d.get("final_action")), str(d.get("risk_status"))[:32], labels.get(sy, "-")))
+    for sy, m in state["failed"].items():
+        print("%-10s FAILED: %s" % (sy.replace("USDT", ""), m))
+    print("%d done, %d failed, %d not yet run." % (len(state["done"]), len(state["failed"]), len([x for x in SP_COINS if (x + "USDT") not in state["done"] and (x + "USDT") not in state["failed"]])))
+    print("Live execution: BLOCKED")
+
+
 def run_batch_predictions(category, limit):
     """
     Run 'predict' sequentially across the top `limit` symbols in a
@@ -11601,6 +11701,13 @@ def demo_interface():
                     _sp.run([_sys.executable, _s] + raw_request.split()[1:])
                 except Exception as e:
                     print("stocks command error: " + str(e))
+                continue
+
+            if user_request == "sp" or user_request.startswith("sp "):
+                try:
+                    run_sp(user_request.split()[1:])
+                except (Exception, SystemExit) as e:
+                    print("sp error: " + str(e))
                 continue
 
             if user_request == "chart" or user_request.startswith("chart "):

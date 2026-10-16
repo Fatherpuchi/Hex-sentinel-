@@ -5083,15 +5083,57 @@ def print_paper_prediction_result(result, horizon="24H"):
         )
 
     _shadow_display(result)
+    _counterfactual_log(result)
 
     print("\n" + live_execution_line("BLOCKED"))
     print(c("=" * 60, CYAN))
+
+
+def _counterfactual_log(result):
+    """Log only: when the consensus reliability guard downgrades an agreed call to HOLD, record what it would have been. Never changes any decision."""
+    try:
+        import sqlite3, time
+        r = result or {}
+        if r.get("_no_log") and not r.get("_db"):
+            return
+        if str(r.get("risk_status", "")) != "AI_CONSENSUS_LOW_RELIABILITY":
+            return
+        sym = str(r.get("symbol", "")).upper()
+        cons = r.get("multi_ai_consensus")
+        d, src = "", ""
+        if isinstance(cons, dict):
+            for k in ("direction", "consensus_direction", "final_direction"):
+                if cons.get(k):
+                    d, src = str(cons.get(k)).upper(), "consensus." + k
+                    break
+        if not d:
+            d, src = str(r.get("signal", "")).upper(), "market_signal"
+        d = "BUY" if d in ("BUY", "LONG") else ("SELL" if d in ("SELL", "SHORT") else "")
+        try:
+            px = float(r.get("current_price", 0))
+        except Exception:
+            px = 0.0
+        if not sym or not d or px <= 0:
+            print("  (counterfactual not logged: missing symbol, direction or price)")
+            return
+        db = r.get("_db") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "shadow.db")
+        now = int(time.time() * 1000)
+        con = sqlite3.connect(db, timeout=5)
+        con.execute("create table if not exists shadow_counterfactual(id integer primary key autoincrement, created_utc text, created_ms integer, hour_bucket integer, symbol text, direction text, dir_source text, price real, risk_status text, due_ms integer, graded_utc text, exit_price real, exit_source text, move_pct real, was_right integer, baseline_rate real, unique(symbol, hour_bucket))")
+        cur = con.execute("insert or ignore into shadow_counterfactual(created_utc,created_ms,hour_bucket,symbol,direction,dir_source,price,risk_status,due_ms) values(?,?,?,?,?,?,?,?,?)",
+                          (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), now, now // 3600000, sym, d, src, px, "AI_CONSENSUS_LOW_RELIABILITY", now + 86400000))
+        con.commit()
+        con.close()
+        print("  counterfactual log: guard blocked an agreed %s on %s; %s for grading after 24h (log only)" % (d, sym, "recorded" if cur.rowcount else "already recorded this hour"))
+    except Exception as e:
+        print("  (counterfactual not logged: " + str(e)[:50] + ")")
 
 
 def _shadow_display(result):
     """Display only: unvalidated shadow-strategy stance next to a prediction. Never changes any decision."""
     try:
         import sqlite3, json, time, urllib.request
+        GR, RD, YL, DM, XX = "\033[92m", "\033[91m", "\033[93m", "\033[90m", "\033[0m"
         sym = str((result or {}).get("symbol", "")).upper()
         print("")
         print(c("SHADOW STRATEGIES (unvalidated, paper only, NOT used in this call)", GRAY))
@@ -5105,39 +5147,86 @@ def _shadow_display(result):
             print("  shadow log is empty")
             return
         today = time.strftime("%Y-%m-%d", time.gmtime())
-        stale = "" if run[0] >= today else "  (NOT today's row)"
-        print("  latest row: %s (%s)%s" % (run[0], run[1], stale))
-        rows = con.execute("select strategy, weight from shadow_signals where applies_date=? and symbol=?", (run[0], sym)).fetchall()
+        note = "" if run[0] >= today else "  - NOT today's row, run shadow_log.py"
+        late = "computed late, not eligible for judging" if run[1] == "late" else "computed on time"
+        print("  Stances for %s (decided from the prior daily close; %s)%s" % (run[0], late, note))
+        rows = dict(con.execute("select strategy, weight from shadow_signals where applies_date=? and symbol=?", (run[0], sym)).fetchall())
         if not rows:
             print("  %s is not in the 40-coin shadow universe" % sym)
             return
-        parts, longs, shorts = [], 0, 0
-        for st, w in rows:
-            tag = "LONG" if w > 1e-12 else ("SHORT" if w < -1e-12 else "flat")
+        info = {
+            "ema50_200": ("trend up: 50-day average above 200-day", "trend not up: 50-day average not above 200-day"),
+            "breakout20": ("in a breakout: close above the prior 20-day high", "no breakout position"),
+            "meanrev_short_b1": ("bounce bet after an unusually sharp 3-day drop", "no sharp 3-day drop"),
+            "weekly_mom_b1": ("top fifth of the 40 coins by last-week return", "not in the top or bottom fifth this week"),
+        }
+        longs = shorts = 0
+        print("  %-18s %-6s %s" % ("strategy", "stance", "meaning"))
+        for st in ("ema50_200", "breakout20", "meanrev_short_b1", "weekly_mom_b1"):
+            if st not in rows:
+                continue
+            w = rows[st]
+            if w > 1e-12:
+                tag, col, mean = "LONG", GR, info[st][0]
+            elif w < -1e-12:
+                tag, col, mean = "SHORT", RD, "bottom fifth of the 40 coins by last-week return"
+            else:
+                tag, col, mean = "flat", DM, info[st][1]
             longs += tag == "LONG"
             shorts += tag == "SHORT"
-            parts.append("%s %s" % (st, tag))
-        print("  " + " | ".join(parts))
+            print("  %-18s %s%-6s%s %s" % (st, col, tag, XX, mean))
+        print("  flat = no position today. It is NOT a forecast of sideways moves.")
         fa = str((result or {}).get("final_action", "")).upper()
-        if "BUY" in fa or "LONG" in fa:
-            ag = "%d of 4 shadow strategies long" % longs
-        elif "SELL" in fa or "SHORT" in fa:
-            ag = "%d of 4 shadow strategies short" % shorts
+        dirn = "LONG" if ("BUY" in fa or "LONG" in fa) else ("SHORT" if ("SELL" in fa or "SHORT" in fa) else "")
+        m = o = 0
+        if not dirn:
+            label = "NO CALL"
+            print("  Sentinel final action: %s (no directional call, so nothing to compare)" % (fa or "n/a"))
         else:
-            ag = "no directional call to compare"
-        print("  vs Sentinel final action (%s): %s" % (fa or "n/a", ag))
+            m = longs if dirn == "LONG" else shorts
+            o = shorts if dirn == "LONG" else longs
+            label = "CONFIRMED" if m > o else ("CONFLICT" if o > m else ("MIXED" if m else "NEUTRAL"))
+            print("  Sentinel final action: %s (%s)" % (fa, dirn.lower()))
+        lcol = {"CONFIRMED": GR, "CONFLICT": RD, "MIXED": YL}.get(label, DM)
+        print("  Combined view: %s%s%s  (%d strategies agree, %d disagree; flat ones do not count)" % (lcol, label, XX, m, o))
+        if dirn == "SHORT":
+            print("  note: 3 of the 4 strategies are long-only, so SELL calls are rarely CONFIRMED")
+        print("  Display only: Sentinel's decision, TP and stop are unchanged.")
+        if not (result or {}).get("_no_log"):
+            try:
+                try:
+                    px_ = float((result or {}).get("current_price", 0))
+                except Exception:
+                    px_ = 0.0
+                lc = sqlite3.connect(db, timeout=5)
+                lc.execute("create table if not exists shadow_combined(id integer primary key autoincrement, created_utc text, symbol text, final_action text, direction text, longs integer, shorts integer, matches integer, opposes integer, label text, shadow_date text, shadow_flag text, price real)")
+                lc.execute("insert into shadow_combined(created_utc,symbol,final_action,direction,longs,shorts,matches,opposes,label,shadow_date,shadow_flag,price) values(?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), sym, fa, dirn, longs, shorts, m, o, label, run[0], run[1], px_))
+                lc.commit()
+                lc.close()
+            except Exception as e2:
+                print("  (combined view not logged: " + str(e2)[:50] + ")")
         rng = "n/a"
+        rv = None
         for sy in (sym, "1000" + sym):
             try:
                 u = "https://fapi.binance.com/fapi/v1/klines?symbol=%s&interval=1d&limit=31" % sy
                 r = urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"}), timeout=6)
                 k = json.load(r)[:-1]
                 v = sorted((float(x[2]) - float(x[3])) / float(x[1]) for x in k)
-                rng = "%.1f%%" % (100 * v[len(v) // 2])
+                rv = v[len(v) // 2]
+                rng = "%.1f%%" % (100 * rv)
                 break
             except Exception:
                 continue
-        print("  typical daily range, 30-day median: %s (volatility, not a target)" % rng)
+        print("  Typical daily range (30-day median): %s  - volatility, not a target" % rng)
+        if rv is not None:
+            try:
+                px = float((result or {}).get("current_price", 0))
+            except Exception:
+                px = 0.0
+            if px > 0:
+                print("  Reference band for a typical day: %.4f to %.4f  (volatility reference, NOT a take-profit or stop)" % (px * (1 - rv), px * (1 + rv)))
     except Exception as e:
         print("  shadow display unavailable: " + str(e)[:60])
 
@@ -6147,26 +6236,26 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
 
     reliability = reliability_guard["reliability"]
 
-    print("\n🧠 Consensus Reliability Safety")
+    print("\n🧠 AI Agreement History (agreement between Groq and Gemini, not accuracy)")
     print("-" * 60)
 
     if reliability["status"] == "INSUFFICIENT_DATA":
 
-        print("Reliability Score: N/A")
+        print("Agreement Score: N/A")
         print(
-            f"Reliability Status: "
+            f"Agreement Status: "
             f"{reliability['status']}"
         )
 
     else:
 
         print(
-            f"Reliability Score: "
+            f"Agreement Score: "
             f"{reliability['score']}/100"
         )
 
         print(
-            f"Reliability Status: "
+            f"Agreement Status: "
             f"{reliability['status']}"
         )
 
@@ -6179,6 +6268,19 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
         f"Sample Size: "
         f"{reliability['sample_size']}"
     )
+
+    try:
+        import sqlite3 as _sq
+        print("Score = 50% direction match + 30% outcome match + 20% full agreement, +/-10 trend; recent window = last 4 records. It never checks whether a call was right.")
+        if reliability.get("trend_adjustment") is not None:
+            print("Base %s, trend adjustment %+.2f (%s)" % (reliability.get("base_score"), reliability["trend_adjustment"], reliability.get("trend")))
+        _c = _sq.connect(SENTINEL_DB_PATH)
+        _o = dict(_c.execute("select prediction_outcome, count(*) from paper_trade_plans where prediction_outcome is not null group by prediction_outcome").fetchall())
+        _c.close()
+        _n = sum(_o.values())
+        print("Graded Sentinel calls (paper_trade_plans): %s (n=%d%s; duplicate plan rows may double count)" % (_o or "none yet", _n, ", thin" if _n < 30 else ""))
+    except Exception as _e:
+        print("Outcome figure unavailable: " + str(_e)[:50])
 
     print(
         f"Decision Action: "

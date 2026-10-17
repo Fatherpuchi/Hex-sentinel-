@@ -941,6 +941,48 @@ def call_openrouter_analysis(system_prompt, user_prompt):
     raise RuntimeError(f"OPENROUTER_PROVIDER_RETRY_EXHAUSTED: {last_error}")
 
 
+def _wrap_provider_log(fn, provider, model):
+    """LOG ONLY. Records one row per provider call in shadow.db. Never changes a result or an exception."""
+    def wrapper(*args, **kwargs):
+        import time as _t
+        t0 = _t.time()
+        ok = 1
+        err = ""
+        try:
+            return fn(*args, **kwargs)
+        except BaseException as e:
+            ok = 0
+            err = ("%s: %s" % (type(e).__name__, e))[:100]
+            raise
+        finally:
+            try:
+                import re as _re
+                import os as _os
+                import sqlite3 as _sq
+                up = args[1] if len(args) > 1 else kwargs.get("user_prompt", "")
+                found = _re.findall(r"Symbol:\s+([A-Z0-9]+)", str(up))
+                sym = found[-1] if found else ""
+                db = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "shadow.db")
+                con = _sq.connect(db, timeout=5)
+                con.execute("create table if not exists shadow_provider_calls(id integer primary key autoincrement, created_utc text, symbol text, provider text, model text, ok int, error text, latency_s real)")
+                con.execute("insert into shadow_provider_calls(created_utc,symbol,provider,model,ok,error,latency_s) values(?,?,?,?,?,?,?)",
+                            (_t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime()), sym, provider, model, ok, err, round(_t.time() - t0, 2)))
+                con.commit()
+                con.close()
+            except Exception:
+                pass
+    try:
+        wrapper.__name__ = fn.__name__
+    except Exception:
+        pass
+    return wrapper
+
+
+call_groq_analysis = _wrap_provider_log(call_groq_analysis, "groq", "openai/gpt-oss-120b")
+call_gemini_analysis = _wrap_provider_log(call_gemini_analysis, "gemini", "gemini-3.1-flash-lite")
+call_openrouter_analysis = _wrap_provider_log(call_openrouter_analysis, "openrouter", "poolside/laguna-s-2.1:free")
+
+
 def parse_multi_ai_assessment(ai_assessment):
     """Parse and strictly validate one AI assessment for multi-AI comparison."""
     valid, reason = validate_ai_assessment(ai_assessment)

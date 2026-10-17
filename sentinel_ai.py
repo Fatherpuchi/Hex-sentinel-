@@ -895,6 +895,11 @@ def call_openrouter_analysis(system_prompt, user_prompt):
             data = response.json()
             result = (data["choices"][0]["message"].get("content") or "").strip()
 
+            _fin = (data["choices"][0].get("finish_reason") or "")
+            if str(_fin).lower() == "length":
+                print("OPENROUTER: reply truncated (finish_reason=length), not used")
+                raise RuntimeError("OpenRouter reply truncated (finish_reason=length)")
+
             if not result:
                 raise RuntimeError("OpenRouter returned no usable assessment")
 

@@ -5424,6 +5424,7 @@ def _v2_shadow_hook(sym, result):
     """LOG ONLY. Prompt v2 on Groq, one attempt. Never changes a decision, never touches sentinel.db."""
     try:
         import hashlib
+        import json
         st = globals().get("_V2_STASH")
         if not st or not st.get("user_prompt"):
             print("  (v2 shadow: no prompt stored for this coin, not logged)")

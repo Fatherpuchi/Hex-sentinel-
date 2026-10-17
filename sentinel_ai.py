@@ -6592,6 +6592,8 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
     print("-" * 60)
     print(ai_assessment)
 
+    if "ENTRY_LOW" in str(ai_assessment) and final_action not in ("PAPER_BUY", "PAPER_SELL"):
+        print(f"\n⚠️ Plan above is NOT active: final action is {final_action}")
     print(f"\nFinal Action:    {final_action}")
     print(f"Live Execution:  {live_execution}")
 

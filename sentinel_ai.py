@@ -873,7 +873,7 @@ def call_openrouter_analysis(system_prompt, user_prompt):
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+                    "model": "poolside/laguna-s-2.1:free",
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},

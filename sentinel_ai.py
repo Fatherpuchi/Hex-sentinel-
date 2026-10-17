@@ -5374,6 +5374,116 @@ def get_batch_prediction_candidates(category, limit):
 
 
 SP_COINS = ["AAVE", "ADA", "ALGO", "APT", "ARB", "ATOM", "AVAX", "BCH", "BNB", "BTC", "CRV", "DOGE", "DOT", "ENJ", "ETC", "ETH", "FET", "FIL", "GRT", "HBAR", "ICP", "INJ", "LINK", "LTC", "MANA", "NEAR", "OP", "RUNE", "SAND", "SEI", "SHIB", "SOL", "STX", "SUI", "TIA", "TRX", "UNI", "WLD", "XLM", "XRP"]
+V2_SYSTEM_PROMPT = """You are the reasoning layer of Hex Sentinel, a paper-research tool.
+Use ONLY the data in the user message. If something you need is missing, say so in REASON; never estimate it.
+
+RULES
+1. Never contradict the deterministic Sentinel status or final allowed action.
+2. Paper only. Never recommend live trading.
+3. No profit forecast, no numeric PnL.
+4. If evidence is mixed or thin, answer NEUTRAL or CAUTIOUS. Do not force conviction.
+5. Plain text, exactly the fields below, one per line, no markdown.
+
+DEFINITIONS
+OOS_EVIDENCE: judged only from the Fold lines of the walk-forward summary. STRONG = folds consistently positive; WEAK = mostly negative or no fold lines; otherwise MIXED.
+CONFIDENCE: HIGH only if status is APPROVED, OOS_EVIDENCE is STRONG and memory and web evidence state no conflict; MODERATE if one of these is weak; LOW otherwise.
+RISK: judged only from max drawdown, fees, slippage and status.
+SIMULATED_OUTCOME: qualitative only; UNCERTAIN unless OOS_EVIDENCE is STRONG.
+REASON: one sentence, max 25 words, naming one supplied figure and one risk, and any missing input.
+
+FIELDS
+ASSESSMENT: BULLISH/BEARISH/CAUTIOUS/NEUTRAL
+CONFIDENCE: LOW/MODERATE/HIGH
+OOS_EVIDENCE: STRONG/MIXED/WEAK
+RISK: LOW/MODERATE/HIGH
+SIMULATED_OUTCOME: PROFIT/LOSS/UNCERTAIN
+REASON: one sentence
+DIRECTION: BUY, SELL, or NONE if the paper signal is not actionable. When actionable it must agree with the paper signal.
+ENTRY_LOW: numeric price, or NA if no price is stated in the data
+ENTRY_HIGH: numeric price, or NA
+STOP_LOSS: numeric price, or NA
+TP1: numeric price, or NA
+TP2: numeric price, or NA
+TP3: numeric price, or NA
+"""
+
+_V2_LABELS = ["ASSESSMENT", "CONFIDENCE", "OOS_EVIDENCE", "RISK", "SIMULATED_OUTCOME", "REASON", "DIRECTION", "ENTRY_LOW", "ENTRY_HIGH", "STOP_LOSS", "TP1", "TP2", "TP3"]
+
+
+def _v2_parse(text):
+    out = {}
+    for line in (text or "").splitlines():
+        t = line.strip().replace("**", "").lstrip("*- ")
+        for lab in _V2_LABELS:
+            if t.upper().startswith(lab + ":") and lab not in out:
+                out[lab] = t.split(":", 1)[1].strip()[:80]
+    return out
+
+
+def _v2_shadow_hook(sym, result):
+    """LOG ONLY. Prompt v2 on Groq, one attempt. Never changes a decision, never touches sentinel.db."""
+    try:
+        import hashlib
+        st = globals().get("_V2_STASH")
+        if not st or not st.get("user_prompt"):
+            print("  (v2 shadow: no prompt stored for this coin, not logged)")
+            return
+        t0 = time.time()
+        http = None
+        fin = None
+        outtok = None
+        raw = ""
+        err = ""
+        try:
+            r = requests.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "openai/gpt-oss-120b",
+                    "messages": [
+                        {"role": "system", "content": V2_SYSTEM_PROMPT},
+                        {"role": "user", "content": st["user_prompt"]},
+                    ],
+                    "temperature": 0.2,
+                    "reasoning_effort": "low",
+                    "include_reasoning": False,
+                    "max_completion_tokens": 600,
+                },
+                timeout=60,
+            )
+            http = r.status_code
+            if r.status_code == 200:
+                d = r.json()
+                ch = d["choices"][0]
+                raw = ((ch.get("message") or {}).get("content") or "").strip()
+                fin = ch.get("finish_reason")
+                outtok = (d.get("usage") or {}).get("completion_tokens")
+            else:
+                err = r.text[:120]
+        except Exception as e:
+            err = ("%s: %s" % (type(e).__name__, e))[:120]
+        secs = time.time() - t0
+        v2 = _v2_parse(raw)
+        v1 = _v2_parse(st.get("groq") or "")
+        try:
+            px = float((result or {}).get("current_price", 0))
+        except Exception:
+            px = 0.0
+        phash = hashlib.sha256(V2_SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:12]
+        db = (result or {}).get("_db") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "shadow.db")
+        con = sqlite3.connect(db, timeout=5)
+        con.execute("create table if not exists shadow_prompt_v2(id integer primary key autoincrement, created_utc text, symbol text, provider text, model text, http_status int, finish_reason text, latency_s real, out_tokens int, prompt_hash text, price real, final_action text, v1_assessment text, v1_direction text, v2_assessment text, v2_direction text, v2_fields_json text, v2_raw text, error text)")
+        con.execute(
+            "insert into shadow_prompt_v2(created_utc,symbol,provider,model,http_status,finish_reason,latency_s,out_tokens,prompt_hash,price,final_action,v1_assessment,v1_direction,v2_assessment,v2_direction,v2_fields_json,v2_raw,error) values(" + ",".join("?" * 18) + ")",
+            (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), sym, "groq", "openai/gpt-oss-120b", http, fin, round(secs, 2), outtok, phash, px, str((result or {}).get("final_action")), v1.get("ASSESSMENT"), v1.get("DIRECTION"), v2.get("ASSESSMENT"), v2.get("DIRECTION"), json.dumps(v2), raw[:2000], err),
+        )
+        con.commit()
+        con.close()
+        print("  v2 shadow: %s | finish %s | fields %d/13 | log only" % (v2.get("ASSESSMENT", "-"), fin, len(v2)))
+    except Exception as e:
+        print("  (v2 shadow not logged: " + str(e)[:50] + ")")
+
+
 SP_DELAY_SECONDS = 120
 SP_MAX_CONSECUTIVE_FAILS = 3
 SP_PROGRESS_FILE = "sp_progress.json"
@@ -5431,6 +5541,7 @@ def run_sp(args):
             sym = base + "USDT"
             print(c("\n[%d/%d] %s" % (i, len(todo), sym), CYAN, bold=True))
             try:
+                globals().pop("_V2_STASH", None)
                 result = run_legacy_pipeline(sym)
                 if not isinstance(result, dict):
                     raise RuntimeError("no result returned")
@@ -5438,6 +5549,7 @@ def run_sp(args):
                     _shadow_display(result)
                     _counterfactual_log(result)
                 state["done"][sym] = {"signal": result.get("signal"), "final_action": result.get("final_action"), "risk_status": result.get("risk_status")}
+                _v2_shadow_hook(sym, result)
                 state["failed"].pop(sym, None)
                 fails = 0
             except (Exception, SystemExit) as exc:
@@ -6239,6 +6351,7 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
     # Preserve one canonical assessment for the existing Stage 2.2 gate.
     # Consensus safety logic is applied separately below.
     ai_assessment = groq_assessment
+    globals()["_V2_STASH"] = {"user_prompt": user_prompt, "groq": groq_assessment}
 
     # Compare independent provider assessments.
     multi_ai_consensus = compare_multi_ai_assessments(

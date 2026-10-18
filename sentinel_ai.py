@@ -5535,6 +5535,7 @@ def _v2_shadow_hook(sym, result):
 SP_DELAY_SECONDS = 120
 SP_MAX_CONSECUTIVE_FAILS = 3
 SP_PROGRESS_FILE = "sp_progress.json"
+SP_COINS = SP_COINS + ["ZEC", "HYPE", "PUMP", "STRK", "ENA"]
 
 
 def run_sp(args):
@@ -5568,14 +5569,14 @@ def run_sp(args):
     todo = [x for x in SP_COINS if (x + "USDT") not in state["done"]]
     if limit is not None:
         todo = todo[:limit]
-    print("\n" + header("HEX SENTINEL - SP BATCH (40-coin universe)", "🧺"))
+    print("\n" + header("HEX SENTINEL - SP BATCH (45-coin list)", "🧺"))
     print("%d coin(s) to run, %d s pause between coins, about %.1f h if each takes ~3 min (unmeasured estimate)." % (len(todo), SP_DELAY_SECONDS, len(todo) * (SP_DELAY_SECONDS + 180) / 3600.0))
     print("Paper only. Changes no decision. Ctrl+C stops and saves progress; 'sp resume' continues.")
     if dry:
         print("dry run, nothing executed: " + ", ".join(todo))
         return
     if not todo:
-        print("nothing to run (all 40 done today).")
+        print("nothing to run (all coins done today).")
         return
     try:
         dup = "print_paper_prediction_result(" in inspect.getsource(run_legacy_pipeline)

@@ -5634,6 +5634,163 @@ def run_sp(args):
     print("Live execution: BLOCKED")
 
 
+PW_SEEDS = ["RLCUSDT", "ZECUSDT"]
+PW_JOIN_FROM = "2026-10-19"
+PW_MAX_COINS = 5
+PW_PROGRESS_FILE = "pw_progress.json"
+
+
+def _pw_candidates():
+    """Read-only. Seeds first, then coins whose plans (created on or after PW_JOIN_FROM) show a full TP1-TP2-TP3 run, or TP1 hit on 3 consecutive plans on 3 different UTC dates."""
+    import sqlite3
+    out = [(sy, "seed", "") for sy in PW_SEEDS]
+    adds = {}
+    rows = []
+    try:
+        db = os.path.abspath(SENTINEL_DB_PATH)
+        con = sqlite3.connect("file:" + db + "?mode=ro", uri=True)
+        rows = con.execute("select symbol, created_at, tp1_hit_at, tp2_hit_at, tp3_hit_at from paper_trade_plans where substr(created_at,1,10) >= ? order by created_at", (PW_JOIN_FROM,)).fetchall()
+        con.close()
+    except Exception as e:
+        print("  (pw join check failed: " + str(e)[:60] + ")")
+    per = {}
+    for sy, ca, t1, t2, t3 in rows:
+        per.setdefault(sy, []).append((ca, t1, t2, t3))
+        if t1 and t2 and t3:
+            if sy not in adds or ca < adds[sy][0]:
+                adds[sy] = (ca, "full TP1-TP3 run")
+    for sy, lst in per.items():
+        seen = set()
+        byday = []
+        for ca, t1, t2, t3 in lst:
+            d = str(ca)[:10]
+            if d in seen:
+                continue
+            seen.add(d)
+            byday.append((ca, t1))
+        for k in range(len(byday) - 2):
+            if all(x[1] for x in byday[k:k + 3]):
+                ca = byday[k + 2][0]
+                if sy not in adds or ca < adds[sy][0]:
+                    adds[sy] = (ca, "TP1 on 3 plans in a row")
+                break
+    for sy, (ca, why) in sorted(adds.items(), key=lambda kv: kv[1][0]):
+        if sy not in PW_SEEDS:
+            out.append((sy, "tp_add", why))
+    return out[:PW_MAX_COINS]
+
+
+def run_pw(args):
+    """Command pw (previous wins): rerun the normal predict pipeline for the pw list. PAPER ONLY. Changes no decision."""
+    import json, inspect, sqlite3
+    here = os.path.dirname(os.path.abspath(__file__))
+    pf = os.path.join(here, PW_PROGRESS_FILE)
+    toks = [str(a).lower() for a in (args or [])]
+    dry = "dry" in toks
+    resume = "resume" in toks
+    if "new" in toks:
+        print("pw new does not exist (it would repeat coins on the same UTC day). Use 'pw resume'.")
+        return
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    state = {"date": today, "done": {}, "failed": {}}
+    if os.path.exists(pf):
+        try:
+            old = json.load(open(pf))
+            if old.get("date") == today:
+                state = old
+                state.setdefault("failed", {})
+        except Exception:
+            pass
+    if state["done"] and not resume and not dry:
+        print("pw already ran %d coin(s) today (UTC). Use 'pw resume' to continue." % len(state["done"]))
+        return
+    cands = _pw_candidates()
+    sp_done = {}
+    try:
+        spf = os.path.join(here, SP_PROGRESS_FILE)
+        if os.path.exists(spf):
+            spo = json.load(open(spf))
+            if spo.get("date") == today:
+                sp_done = spo.get("done", {})
+    except Exception:
+        pass
+    if dry:
+        print("\n" + header("HEX SENTINEL - PW list (previous wins)", "🏆"))
+        for sy, tag, why in cands:
+            note = ""
+            if sy in sp_done:
+                note = "  [already decided in today's sp, would be skipped]"
+            elif sy in state["done"]:
+                note = "  [already done today in pw]"
+            print("  %-8s %-7s %s%s" % (sy.replace("USDT", ""), tag, why, note))
+        return
+    todo = [(sy, tag, why) for sy, tag, why in cands if sy not in state["done"] and sy not in sp_done]
+    for sy, tag, why in cands:
+        if sy in sp_done:
+            print("skip %s: already decided in today's sp" % sy)
+    if not todo:
+        print("nothing to run (pw list done or skipped today).")
+        return
+    print("\n" + header("HEX SENTINEL - PW BATCH (previous wins)", "🏆"))
+    print("%d coin(s), %d s pause between coins. Paper only. Changes no decision. 'pw resume' continues." % (len(todo), SP_DELAY_SECONDS))
+    try:
+        dup = "print_paper_prediction_result(" in inspect.getsource(run_legacy_pipeline)
+    except Exception:
+        dup = None
+        print("note: could not inspect the pipeline, so the shadow block will not be printed per coin")
+    fails = 0
+    try:
+        for i, (sym, tag, why) in enumerate(todo, 1):
+            print(c("\n[%d/%d] %s (%s)" % (i, len(todo), sym, tag), CYAN, bold=True))
+            try:
+                globals().pop("_V2_STASH", None)
+                result = run_legacy_pipeline(sym)
+                if not isinstance(result, dict):
+                    raise RuntimeError("no result returned")
+                if dup is False:
+                    _shadow_display(result)
+                    _counterfactual_log(result)
+                state["done"][sym] = {"signal": result.get("signal"), "final_action": result.get("final_action"), "risk_status": result.get("risk_status")}
+                _v2_shadow_hook(sym, result)
+                try:
+                    try:
+                        px = float(result.get("current_price") or 0)
+                    except Exception:
+                        px = 0.0
+                    lc = sqlite3.connect(os.path.join(here, "shadow.db"), timeout=5)
+                    lc.execute("create table if not exists shadow_pw_runs(id integer primary key autoincrement, created_utc text, symbol text, tag text, why text, signal text, final_action text, risk_status text, price real)")
+                    lc.execute("insert into shadow_pw_runs(created_utc,symbol,tag,why,signal,final_action,risk_status,price) values(?,?,?,?,?,?,?,?)",
+                               (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), sym, tag, why, str(result.get("signal")), str(result.get("final_action")), str(result.get("risk_status")), px))
+                    lc.commit()
+                    lc.close()
+                except Exception as e3:
+                    print("  (pw not logged: " + str(e3)[:50] + ")")
+                state["failed"].pop(sym, None)
+                fails = 0
+            except (Exception, SystemExit) as exc:
+                msg = "Stage 1 pipeline failed (see output above)" if isinstance(exc, SystemExit) else str(exc)[:80]
+                print("WARNING %s failed: %s" % (sym, msg))
+                state["failed"][sym] = msg
+                fails += 1
+            json.dump(state, open(pf, "w"))
+            if fails >= SP_MAX_CONSECUTIVE_FAILS:
+                print("Stopping: %d coins in a row failed. Progress saved; 'pw resume' retries." % fails)
+                break
+            if i < len(todo):
+                for _ in range(SP_DELAY_SECONDS):
+                    time.sleep(1)
+    except KeyboardInterrupt:
+        json.dump(state, open(pf, "w"))
+        print("\nStopped by user. Progress saved; 'pw resume' continues.")
+    print("\n" + header("PW - SUMMARY (today, UTC)", "📋"))
+    print("%-8s %-14s %s" % ("coin", "final action", "risk status"))
+    for sy, d in state["done"].items():
+        print("%-8s %-14s %s" % (sy.replace("USDT", ""), str(d.get("final_action")), str(d.get("risk_status"))[:32]))
+    for sy, m in state["failed"].items():
+        print("%-8s FAILED: %s" % (sy.replace("USDT", ""), m))
+    print("Live execution: BLOCKED")
+
+
 def run_batch_predictions(category, limit):
     """
     Run 'predict' sequentially across the top `limit` symbols in a
@@ -11865,6 +12022,13 @@ def demo_interface():
                     _sp.run([_sys.executable, _s] + raw_request.split()[1:])
                 except Exception as e:
                     print("stocks command error: " + str(e))
+                continue
+
+            if user_request == "pw" or user_request.startswith("pw "):
+                try:
+                    run_pw(user_request.split()[1:])
+                except (Exception, SystemExit) as e:
+                    print("pw error: " + str(e))
                 continue
 
             if user_request == "sp" or user_request.startswith("sp "):

@@ -6792,6 +6792,8 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
     print("-" * 60)
     print(f"Risk Gate Status: {risk_status}")
     print(f"Risk Reason:      {risk_reason}")
+    if str(risk_status) == "AI_CONSENSUS_LOW_RELIABILITY":
+        print("Note:             this is the Groq/Gemini agreement-history score (below 60). It does not check whether this call is right.")
 
     print("\nAI Assessment")
     print("-" * 60)
@@ -11464,7 +11466,81 @@ def get_prediction_performance_report():
         conn.close()
 
 
-def print_all_profile_performance():
+def print_all_profile_performance(cmd=""):
+    """Compact one-table prediction performance for every profile. Display only, no numbers change. 'performance full' prints the detailed blocks."""
+    if "full" in str(cmd).lower():
+        return print_all_profile_performance_full()
+    import glob as _glob
+    import re as _re
+
+    global SENTINEL_DB_PATH, HORIZON_LABEL, HORIZON_HOURS
+    cur = os.path.abspath(SENTINEL_DB_PATH)
+    profiles = []
+    for path in sorted(_glob.glob(os.path.join(os.path.dirname(cur), "sentinel*.db"))):
+        m = _re.fullmatch(r"sentinel(?:_(\d+)h)?\.db", os.path.basename(path))
+        if m:
+            profiles.append((path, int(m.group(1) or 24)))
+    if cur not in [p for p, _ in profiles]:
+        profiles.append((cur, HORIZON_HOURS))
+    profiles.sort(key=lambda x: x[1])
+
+    def _p(v):
+        return "n/a" if v is None else "%.1f%%" % v
+
+    saved = (SENTINEL_DB_PATH, HORIZON_LABEL, HORIZON_HOURS, os.environ.get("SENTINEL_DB"))
+    lines = []
+    neutral_total = 0
+    thin = False
+    try:
+        for path, hours in profiles:
+            SENTINEL_DB_PATH = path
+            HORIZON_HOURS = hours
+            HORIZON_LABEL = "%dH" % hours
+            os.environ["SENTINEL_DB"] = path
+            try:
+                r = get_prediction_performance_report()
+                g = r["evaluated_predictions"]
+                neutral_total += r.get("neutral", 0) or 0
+                if g:
+                    acc = _p(r["accuracy"])
+                    buy = _p(r["buy_accuracy"])
+                    sell = _p(r["sell_accuracy"])
+                    mv = "%+.2f%%" % r["avg_price_change_pct"]
+                    w = str(r["successes"])
+                    l = str(r["failures"])
+                    if g < 30:
+                        thin = True
+                else:
+                    acc = buy = sell = mv = "n/a"
+                    w = l = "-"
+                lines.append("%-4s %3s %3s %3s %3s %3s %6s %6s %6s %8s" % ("%dH" % hours, r["total_predictions"], r["active_predictions"], g, w, l, acc, buy, sell, mv))
+            except Exception as e:
+                lines.append("%dH report failed: %s" % (hours, str(e)[:40]))
+    finally:
+        SENTINEL_DB_PATH, HORIZON_LABEL, HORIZON_HOURS = saved[0], saved[1], saved[2]
+        if saved[3] is None:
+            os.environ.pop("SENTINEL_DB", None)
+        else:
+            os.environ["SENTINEL_DB"] = saved[3]
+
+    print("\n" + "=" * 60)
+    print("📊 HEX SENTINEL — PREDICTION PERFORMANCE")
+    print("=" * 60)
+    print("%-4s %3s %3s %3s %3s %3s %6s %6s %6s %8s" % ("Hrz", "Tot", "Act", "Grd", "Win", "Los", "Acc", "BUY", "SELL", "AvgMove"))
+    print("-" * 60)
+    for ln in lines:
+        print(ln)
+    print("-" * 60)
+    if thin:
+        print("Under 30 graded is thin. Accuracy is direction only, not profit.")
+    if neutral_total:
+        print("Neutral calls: %d (details and score: performance full)" % neutral_total)
+    print("Detailed blocks: performance full")
+    print("🔒 Live execution: BLOCKED")
+    print("=" * 60)
+
+
+def print_all_profile_performance_full():
     """Run the performance report for every profile database (24h, 48h, ...)."""
     import glob as _glob
     import re as _re
@@ -11968,10 +12044,11 @@ def demo_interface():
             if user_request in {
                 "performance",
                 "prediction performance",
-                "prediction stats"
+                "prediction stats",
+                "performance full"
             }:
                 try:
-                    print_all_profile_performance()
+                    print_all_profile_performance(user_request)
                 except Exception as performance_error:
                     print(
                         "\n⚠️ Performance report failed: "

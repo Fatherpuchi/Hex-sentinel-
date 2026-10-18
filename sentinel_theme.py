@@ -206,6 +206,42 @@ def print_router_result(tool_name, result):
             print(kv(label, value))
         return
 
+    if tool_name == "get_decision_history" and isinstance(result, list) and result:
+        try:
+            why = {
+                "AI_CONSENSUS_LOW_RELIABILITY": "agreement score under 60",
+                "AI_CONSENSUS_CONFLICT": "Groq/Gemini conflict",
+                "AI_CONSENSUS_INVALID": "AI answer invalid",
+                "BLOCKED": "Stage 1 blocked",
+            }
+            out = []
+            out.append("RECENT DECISIONS (UTC)")
+            out.append("%-11s %-6s %-9s %-26s %-11s %s" % ("Time", "Coin", "Signal", "Why / risk status", "Action", "Imp"))
+            out.append("-" * 70)
+            for ts, sy, sg, rs, fa, im in result:
+                t = str(ts)[5:16].replace("T", " ")
+                coin = str(sy).replace("USDT", "")[:6]
+                w = why.get(str(rs), str(rs))[:26]
+                try:
+                    imp = "%.1f" % float(im)
+                except Exception:
+                    imp = str(im)
+                sg_s = "%-9s" % str(sg)[:9]
+                fa_s = "%-11s" % str(fa)[:11]
+                sc = status_color(str(sg))
+                ac = status_color(str(fa))
+                if sc:
+                    sg_s = c(sg_s, sc, bold=True)
+                if ac:
+                    fa_s = c(fa_s, ac, bold=True)
+                out.append("%-11s %-6s %s %-26s %s %s" % (t, coin, sg_s, w, fa_s, imp))
+            out.append("-" * 70)
+            out.append("Order as stored: importance first, then newest.")
+            print("\n".join(out))
+            return
+        except Exception:
+            pass
+
     if isinstance(result, list):
         if not result:
             print(c("No results.", GRAY))

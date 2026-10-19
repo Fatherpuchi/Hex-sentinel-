@@ -5532,6 +5532,96 @@ def _v2_shadow_hook(sym, result):
         print("  (v2 shadow not logged: " + str(e)[:50] + ")")
 
 
+V2_1_SYSTEM_PROMPT = V2_SYSTEM_PROMPT.rstrip("\n") + """
+
+MARKET FACTS
+The user message may end with a MARKET FACTS block computed by code from Binance candles. Use only its figures. Never recompute or estimate any figure. If it says UNAVAILABLE or a value is n/a, say so in REASON. It never overrides the Sentinel status or final allowed action and is context, not a signal.
+"""
+
+
+def _v2_1_shadow_hook(sym, result):
+    """LOG ONLY (prompt v2.1 + facts_v1). Groq, one attempt. Never changes a decision, never touches sentinel.db."""
+    try:
+        import hashlib
+        import json
+        import sys as _sys
+        st = globals().get("_V2_STASH")
+        if not st or not st.get("user_prompt"):
+            print("  (v2.1 shadow: no prompt stored for this coin, not logged)")
+            return
+        try:
+            _here = os.path.dirname(os.path.abspath(__file__))
+            if _here not in _sys.path:
+                _sys.path.insert(0, _here)
+            import market_facts
+            facts = market_facts.build_facts(sym, st["user_prompt"])
+        except Exception as ef:
+            facts = {"status": "UNAVAILABLE", "reason": "module error " + str(ef)[:40], "text": "MARKET FACTS: UNAVAILABLE (module error)", "source": None, "last_open_ms": None, "age_min": None, "candles_used": 0, "deviation_pct": None, "numbers": {}, "version": "facts_v1"}
+        t0 = time.time()
+        http = None
+        fin = None
+        outtok = None
+        raw = ""
+        err = ""
+        try:
+            r = requests.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "openai/gpt-oss-120b",
+                    "messages": [
+                        {"role": "system", "content": V2_1_SYSTEM_PROMPT},
+                        {"role": "user", "content": st["user_prompt"] + "\n\n" + str(facts.get("text"))},
+                    ],
+                    "temperature": 0.2,
+                    "reasoning_effort": "low",
+                    "include_reasoning": False,
+                    "max_completion_tokens": 600,
+                },
+                timeout=60,
+            )
+            http = r.status_code
+            if r.status_code == 200:
+                d = r.json()
+                ch = d["choices"][0]
+                raw = ((ch.get("message") or {}).get("content") or "").strip()
+                fin = ch.get("finish_reason")
+                outtok = (d.get("usage") or {}).get("completion_tokens")
+            else:
+                err = r.text[:120]
+        except Exception as e:
+            err = ("%s: %s" % (type(e).__name__, e))[:120]
+        secs = time.time() - t0
+        v2 = _v2_parse(raw)
+        v1 = _v2_parse(st.get("groq") or "")
+        try:
+            px = float((result or {}).get("current_price", 0))
+        except Exception:
+            px = 0.0
+        phash = hashlib.sha256(V2_1_SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:12]
+        db = (result or {}).get("_db") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "shadow.db")
+        now_s = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        con = sqlite3.connect(db, timeout=5)
+        con.execute("create table if not exists shadow_market_facts(id integer primary key autoincrement, created_utc text, symbol text, version text, source text, status text, reason text, last_open_ms int, age_min real, candles_used int, deviation_pct real, text text, numbers_json text, unique(symbol, last_open_ms, source, version))")
+        con.execute("create table if not exists shadow_prompt_v2_1(id integer primary key autoincrement, created_utc text, symbol text, provider text, model text, http_status int, finish_reason text, latency_s real, out_tokens int, prompt_hash text, price real, final_action text, v1_assessment text, v1_direction text, v2_assessment text, v2_direction text, v2_fields_json text, v2_raw text, error text, facts_id int, facts_status text)")
+        cur = con.execute("insert or ignore into shadow_market_facts(created_utc,symbol,version,source,status,reason,last_open_ms,age_min,candles_used,deviation_pct,text,numbers_json) values(?,?,?,?,?,?,?,?,?,?,?,?)",
+                          (now_s, sym, facts.get("version"), facts.get("source"), facts.get("status"), facts.get("reason"), facts.get("last_open_ms"), facts.get("age_min"), facts.get("candles_used"), facts.get("deviation_pct"), str(facts.get("text"))[:3000], json.dumps(facts.get("numbers"), default=str)))
+        if cur.rowcount:
+            fid = cur.lastrowid
+        else:
+            row = con.execute("select id from shadow_market_facts where symbol=? and last_open_ms=? and source=? and version=?", (sym, facts.get("last_open_ms"), facts.get("source"), facts.get("version"))).fetchone()
+            fid = row[0] if row else None
+        con.execute(
+            "insert into shadow_prompt_v2_1(created_utc,symbol,provider,model,http_status,finish_reason,latency_s,out_tokens,prompt_hash,price,final_action,v1_assessment,v1_direction,v2_assessment,v2_direction,v2_fields_json,v2_raw,error,facts_id,facts_status) values(" + ",".join("?" * 20) + ")",
+            (now_s, sym, "groq", "openai/gpt-oss-120b", http, fin, round(secs, 2), outtok, phash, px, str((result or {}).get("final_action")), v1.get("ASSESSMENT"), v1.get("DIRECTION"), v2.get("ASSESSMENT"), v2.get("DIRECTION"), json.dumps(v2), raw[:2000], err, fid, facts.get("status")),
+        )
+        con.commit()
+        con.close()
+        print("  v2.1 shadow: %s | finish %s | fields %d/13 | facts %s | log only" % (v2.get("ASSESSMENT", "-"), fin, len(v2), facts.get("status")))
+    except Exception as e:
+        print("  (v2.1 shadow not logged: " + str(e)[:50] + ")")
+
+
 SP_DELAY_SECONDS = 120
 SP_MAX_CONSECUTIVE_FAILS = 3
 SP_PROGRESS_FILE = "sp_progress.json"
@@ -5598,7 +5688,7 @@ def run_sp(args):
                     _shadow_display(result)
                     _counterfactual_log(result)
                 state["done"][sym] = {"signal": result.get("signal"), "final_action": result.get("final_action"), "risk_status": result.get("risk_status")}
-                _v2_shadow_hook(sym, result)
+                _v2_1_shadow_hook(sym, result)
                 state["failed"].pop(sym, None)
                 fails = 0
             except (Exception, SystemExit) as exc:
@@ -5751,7 +5841,7 @@ def run_pw(args):
                     _shadow_display(result)
                     _counterfactual_log(result)
                 state["done"][sym] = {"signal": result.get("signal"), "final_action": result.get("final_action"), "risk_status": result.get("risk_status")}
-                _v2_shadow_hook(sym, result)
+                _v2_1_shadow_hook(sym, result)
                 try:
                     try:
                         px = float(result.get("current_price") or 0)

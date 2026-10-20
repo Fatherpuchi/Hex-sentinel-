@@ -5622,6 +5622,111 @@ def _v2_1_shadow_hook(sym, result):
         print("  (v2.1 shadow not logged: " + str(e)[:50] + ")")
 
 
+_V21G_FAIL = {"n": 0}
+
+
+def _v2_1_gemini_hook(sym, result):
+    """LOG ONLY (prompt v2.1 + facts_v1 on Gemini). One attempt on key 3, no retries. Never changes a decision, never touches sentinel.db."""
+    try:
+        import hashlib
+        import json
+        st = globals().get("_V2_STASH")
+        if not st or not st.get("user_prompt"):
+            print("  (v2.1g shadow: no prompt stored for this coin, not logged)")
+            return
+        db = (result or {}).get("_db") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "shadow.db")
+        now_s = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        phash = hashlib.sha256(V2_1_SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:12]
+        try:
+            px = float((result or {}).get("current_price", 0))
+        except Exception:
+            px = 0.0
+        fa = str((result or {}).get("final_action"))
+        model = "gemini-3.1-flash-lite"
+        con = sqlite3.connect(db, timeout=5)
+        con.execute("create table if not exists shadow_prompt_v2_1g(id integer primary key autoincrement, created_utc text, symbol text, provider text, model text, key_label text, http_status int, finish_reason text, latency_s real, prompt_hash text, price real, final_action text, v2_assessment text, v2_direction text, v2_fields_json text, v2_raw text, error text, facts_id int, skip_reason text)")
+        cols = "created_utc,symbol,provider,model,key_label,http_status,finish_reason,latency_s,prompt_hash,price,final_action,v2_assessment,v2_direction,v2_fields_json,v2_raw,error,facts_id,skip_reason"
+
+        def _ins(vals):
+            con.execute("insert into shadow_prompt_v2_1g(" + cols + ") values(" + ",".join("?" * 18) + ")", vals)
+            con.commit()
+
+        def _skip(reason):
+            _ins((now_s, sym, "gemini", model, "GEMINI_API_KEY_3", None, None, None, phash, px, fa, None, None, "{}", "", "", None, reason))
+            con.close()
+            print("  (v2.1g shadow skipped: " + reason + ")")
+
+        cutoff = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 7200))
+        row = con.execute("select id,text from shadow_market_facts where symbol=? and created_utc>=? order by id desc limit 1", (sym, cutoff)).fetchone()
+        if not row:
+            return _skip("no facts row")
+        key = os.getenv("GEMINI_API_KEY_3")
+        if not key:
+            return _skip("key 3 not loaded")
+        if _V21G_FAIL["n"] >= 3:
+            return _skip("3 failures in a row this session")
+        t0 = time.time()
+        http = None
+        fin = None
+        raw = ""
+        err = ""
+        resp = None
+        try:
+            resp = requests.post(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:streamGenerateContent",
+                params={"alt": "sse"},
+                headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+                json={
+                    "systemInstruction": {"parts": [{"text": V2_1_SYSTEM_PROMPT}]},
+                    "contents": [{"role": "user", "parts": [{"text": st["user_prompt"] + "\n\n" + str(row[1])}]}],
+                },
+                stream=True,
+                timeout=(15, 60),
+            )
+            http = resp.status_code
+            if http == 200:
+                chunks = []
+                for line in resp.iter_lines(decode_unicode=True):
+                    if not line or not line.startswith("data:"):
+                        continue
+                    dl = line[5:].strip()
+                    if not dl:
+                        continue
+                    try:
+                        d = json.loads(dl)
+                    except Exception:
+                        continue
+                    for cand in d.get("candidates", []):
+                        for part in (cand.get("content") or {}).get("parts", []):
+                            tx = part.get("text")
+                            if isinstance(tx, str):
+                                chunks.append(tx)
+                        if cand.get("finishReason"):
+                            fin = cand.get("finishReason")
+                raw = "".join(chunks).strip()
+            else:
+                err = resp.text[:120]
+        except Exception as e:
+            err = ("%s: %s" % (type(e).__name__, e))[:120]
+        finally:
+            if resp is not None:
+                try:
+                    resp.close()
+                except Exception:
+                    pass
+        secs = time.time() - t0
+        if http == 200 and raw:
+            _V21G_FAIL["n"] = 0
+        else:
+            _V21G_FAIL["n"] += 1
+        v2 = _v2_parse(raw)
+        _ins((now_s, sym, "gemini", model, "GEMINI_API_KEY_3", http, fin, round(secs, 2), phash, px, fa, v2.get("ASSESSMENT"), v2.get("DIRECTION"), json.dumps(v2), raw[:2000], err, row[0], ""))
+        con.close()
+        print("  v2.1g shadow: %s | finish %s | fields %d/13 | http %s | log only" % (v2.get("ASSESSMENT", "-"), fin, len(v2), http))
+    except Exception as e:
+        print("  (v2.1g shadow not logged: " + str(e)[:50] + ")")
+
+
 SP_DELAY_SECONDS = 120
 SP_MAX_CONSECUTIVE_FAILS = 3
 SP_PROGRESS_FILE = "sp_progress.json"
@@ -5689,6 +5794,7 @@ def run_sp(args):
                     _counterfactual_log(result)
                 state["done"][sym] = {"signal": result.get("signal"), "final_action": result.get("final_action"), "risk_status": result.get("risk_status")}
                 _v2_1_shadow_hook(sym, result)
+                _v2_1_gemini_hook(sym, result)
                 state["failed"].pop(sym, None)
                 fails = 0
             except (Exception, SystemExit) as exc:
@@ -5842,6 +5948,7 @@ def run_pw(args):
                     _counterfactual_log(result)
                 state["done"][sym] = {"signal": result.get("signal"), "final_action": result.get("final_action"), "risk_status": result.get("risk_status")}
                 _v2_1_shadow_hook(sym, result)
+                _v2_1_gemini_hook(sym, result)
                 try:
                     try:
                         px = float(result.get("current_price") or 0)

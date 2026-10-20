@@ -10075,6 +10075,36 @@ print("Agent tool manifest registered.")
 # STAGE 4.2 — AGENT TOOL EXECUTION
 # ============================================================
 
+def search_decision_history(term, limit=20):
+    """Read-only text search over agent_decisions (display only)."""
+    term = str(term).strip()[:30]
+    like = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    where = (
+        "(symbol LIKE ? ESCAPE '\\' OR signal LIKE ? ESCAPE '\\' "
+        "OR risk_status LIKE ? ESCAPE '\\' OR final_action LIKE ? ESCAPE '\\')"
+    )
+    params = (like, like, like, like)
+    try:
+        conn = sqlite3.connect(SENTINEL_DB_PATH)
+        cur = conn.cursor()
+        total = cur.execute(
+            "SELECT COUNT(*) FROM agent_decisions WHERE " + where, params
+        ).fetchone()[0]
+        rows = cur.execute(
+            "SELECT timestamp, symbol, signal, risk_status, final_action, importance "
+            "FROM agent_decisions WHERE " + where +
+            " ORDER BY importance DESC, id DESC LIMIT ?", params + (limit,)
+        ).fetchall()
+        conn.close()
+    except Exception as e:
+        return {"success": False, "tool": "get_decision_history", "error": str(e)}
+    print("%d matches for '%s' (showing up to %d)" % (total, term, limit))
+    if not rows:
+        return {"success": True, "tool": "get_decision_history",
+                "result": {"matches": 0, "term": term}}
+    return {"success": True, "tool": "get_decision_history", "result": rows}
+
+
 def execute_tool(tool_name, *args):
     """Safely execute a registered Sentinel agent tool."""
 
@@ -10171,6 +10201,9 @@ def route_user_request(user_request):
     # Bare commands do not need AI routing.
     if request_lower in ["status", "state", "safety"]:
         return execute_tool("get_agent_status")
+
+    if request_lower.startswith("history ") and len(request_lower) > 8:
+        return search_decision_history(request_lower[8:].strip())
 
     if request_lower in ["history", "decisions", "recent"]:
         return execute_tool("get_decision_history")

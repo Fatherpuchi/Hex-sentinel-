@@ -89,3 +89,11 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 
 51. 2026-10-19 Prompt v2.1 + facts_v1 wired into the sp and pw shadow call (log only, approved spec step 2). New _v2_1_shadow_hook replaces _v2_shadow_hook at the two call sites (run_sp, run_pw); the old function stays in the file but is not called, so shadow_prompt_v2 stops receiving rows. v2.1 = V2_SYSTEM_PROMPT plus one MARKET FACTS paragraph (new prompt hash). The Groq user message becomes the stashed user prompt plus the market_facts.build_facts text for the coin (one public Binance klines request per coin, 15 s timeout, no AI call, Spot then Futures). Groq only; Gemini and the live path are untouched. New tables in shadow.db only: shadow_market_facts (unique on symbol, last candle open, source, version; insert or ignore) and shadow_prompt_v2_1 (old v2 columns plus facts_id and facts_status). A failed facts build still calls Groq with the UNAVAILABLE line.
     Limits: not live-tested at commit time; the facts block adds about 250 input tokens (estimate) on the Groq v2.1 call only; v2.0 and v2.1 cover different periods so no comparison between them is informative; the registered v2 grading rule applies per prompt hash and restarts its 30-row count; no causal claim about the facts; v2.1 text must not be tuned on seen data.
+
+## Errata 52: history search (display only)
+- `history <term>` added in sentinel_ai.py (search_decision_history, routed before the bare-command check, so no Groq router call).
+- Case-insensitive substring match over stored symbol, signal, risk_status, final_action (stored values, not display labels). Term cut at 30 chars, LIKE wildcards escaped. Up to 20 rows, importance then newest. Prints "N matches" line first.
+- Read-only SQL on agent_decisions. No writes, no effect on decisions, guard, or execution.
+- `history new` not built: formatter footer in sentinel_theme.py is fixed text.
+- Confirmed live 2026-10-20: `history AAVE` (5 matches), `history conflict` (20 rows shown; match-count line not seen).
+- Backup: sentinel_ai.py.bak_20261020_hist (not in git).

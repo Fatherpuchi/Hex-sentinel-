@@ -106,3 +106,10 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 - Architecture decision: standalone orderbook_log.py once daily before sp, not a hook in run_sp/run_pw.
 - Response shape confirmed by user paste 2026-10-20 (AAVEUSDT: lastUpdateId, bids, asks, 100 levels, [price, qty] strings). Official Binance docs page not retrieved; weight 5 is from third-party sources.
 - Pairing and zero rules registered before any data. No code, tests, or collection authorized yet.
+
+## Errata 54: numbering note and Gemini v2.1 hook first live rows
+- Two items are numbered 52 in this file: "## Errata 52: history search" (commit a2784b9) and the list-style "52." Gemini v2.1 shadow call (commit 75b92ea, made from the user's git identity 2026-10-20 09:31 UTC; Claude saw only the errata text, the call sites and a control-flow grep, not the full diff). Both stay as written. Next free number: 55.
+- Confirmed by user paste 2026-10-20: shadow_prompt_v2_1g has 2 rows (RLC 09:31:58Z, ZEC 09:34:28Z), both HTTP 200, no skip reasons, v2_assessment CAUTIOUS in both, matching the Groq v2.1 rows 7-8. Key 3 therefore worked with gemini-3.1-flash-lite on those two calls.
+- The hook's body is wrapped in try/except (control-flow grep of the diff). The body of its outer except was not seen.
+- Groq v2.1 rows 2-6 (AAVE, ADA, ALGO, APT, ARB, 07:57-08:07Z) predate commit 75b92ea and have no Gemini twin.
+- Not confirmed: Gemini quota effect on live calls (key 3 is shared), whether shadow_provider_calls misses these calls (per the 52 text it does), facts status mix. Two rows prove nothing; grading rule unchanged.

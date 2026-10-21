@@ -113,3 +113,9 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 - The hook's body is wrapped in try/except (control-flow grep of the diff). The body of its outer except was not seen.
 - Groq v2.1 rows 2-6 (AAVE, ADA, ALGO, APT, ARB, 07:57-08:07Z) predate commit 75b92ea and have no Gemini twin.
 - Not confirmed: Gemini quota effect on live calls (key 3 is shared), whether shadow_provider_calls misses these calls (per the 52 text it does), facts status mix. Two rows prove nothing; grading rule unchanged.
+
+## Errata 55: first counterfactual read (observation only)
+- Confirmed by user paste 2026-10-20 after the 10:27Z grade run: counterfactual report read at 31 graded (35 logged, 2 excluded under errata 35, not counted). Blocked calls that would have been right: 15 of 31 = 48.4%. Baseline (share of prior 30 days that moved that way) 48.4% over 31 rows. 1 sd of chance about 9.0 points; a gap under about 2 sd is indistinguishable from chance; same-day rows are correlated so real noise is larger.
+- Reading: null. No difference from chance larger than roughly 18 points is detectable at this n. It does not show the guard is right or wrong. Guard unchanged.
+- Rows 33 (RLC SELL, -1.53%, RIGHT) and 34 (AAVE SELL, +4.48%, WRONG) graded in that run.
+- Held-plan table at 36 rows after the same-day run; the 30-per-AI minimum is not met and no report was read.

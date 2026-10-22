@@ -137,3 +137,10 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 - Reading: no difference from zero detectable at this n (one standard error about 0.17 R by estimate; same-day rows are correlated). Population is guard-held counterfactual calls, mostly SELL. Fees and slippage not modeled. Not a profit claim. Multipliers unchanged; any change needs levels_v2.
 - AI-level comparison still not implemented (needs the held-plan schema; separate small patch if wanted).
 - Daily routine now includes: python3 levels_log.py run | tail -n 3, after counterfactual_grade.py grade.
+
+## Errata 59: risk calculator command (display only)
+- `risk <account> <risk_pct> <entry> <stop> [fee_pct_per_side]` added in sentinel_ai.py (risk_calc_cmd, routed before the bare-command check; no Groq router call). Pure arithmetic: no DB, no network, no AI, no storage. Does not touch decisions, plans, the guard or the live path.
+- Direction from stop vs entry; size = floor(risk amount / (stop distance + fees on entry and stop) at 6 decimals). Notes warn for risk above 3% (CME gives 1-3% for new traders), notional above the account (margin and liquidation not modeled) and size 0. Planned loss only; gaps and slippage can make a real loss larger.
+- Confirmed live 2026-10-20 by user paste: `risk 1000 1 100 98` (long, size 5, notional 500, loss 10) and `risk 1000 5 100 102 0.05` (short, size 23.798191, notional 2379.82, loss 50, both warnings), both matching hand calculation.
+- Not tested: the usage line on bad input, a bare `risk`. Cosmetic: label spacing in the formatter ("Stop Distance Pct:2.000%"). The startup command list does not mention `history <term>` or `risk`; not patched.
+- Backup: sentinel_ai.py.bak_20261020_risk (not in git). Local commit only.

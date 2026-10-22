@@ -10212,6 +10212,47 @@ def search_decision_history(term, limit=20):
     return {"success": True, "tool": "get_decision_history", "result": rows}
 
 
+def risk_calc_cmd(argstr):
+    """Display-only position-size arithmetic. No DB, no network, no AI."""
+    import math
+    usage = "usage: risk <account> <risk_pct> <entry> <stop> [fee_pct_per_side]  e.g. risk 1000 1 100 98"
+    err = {"success": False, "tool": "risk_calc", "error": usage}
+    try:
+        vals = [float(x) for x in str(argstr).split()]
+    except Exception:
+        return err
+    if len(vals) not in (4, 5) or not all(math.isfinite(v) for v in vals):
+        return err
+    acct, rp, entry, stop = vals[:4]
+    fee = vals[4] if len(vals) == 5 else 0.0
+    if acct <= 0 or entry <= 0 or stop <= 0 or rp <= 0 or rp > 100 or fee < 0 or fee > 5 or stop == entry:
+        return err
+    risk_amt = acct * rp / 100.0
+    dist = abs(entry - stop)
+    rpu = dist + (entry + stop) * fee / 100.0
+    size = math.floor(risk_amt / rpu * 1e6) / 1e6
+    notional = size * entry
+    notes = ["Planned loss only: gaps and slippage can make a real loss larger. Check the symbol lot size."]
+    if rp > 3:
+        notes.append("Risk above 3%: CME gives 1-3% as the range for new traders.")
+    if notional > acct:
+        notes.append("Notional exceeds the account: needs leverage; margin and liquidation are not modeled.")
+    if size <= 0:
+        notes.append("Size rounds to 0 at this risk and stop distance.")
+    res = {
+        "direction": "LONG (stop below entry)" if stop < entry else "SHORT (stop above entry)",
+        "risk_amount": "%.2f" % risk_amt,
+        "stop_distance_pct": "%.3f%%" % (dist / entry * 100.0),
+        "risk_per_unit": "%.6f" % rpu,
+        "size_units": "%.6f" % size,
+        "notional": "%.2f" % notional,
+        "notional_pct_of_account": "%.1f%%" % (notional / acct * 100.0),
+        "loss_at_stop": "%.2f" % (size * rpu),
+        "note": " ".join(notes),
+    }
+    return {"success": True, "tool": "risk_calc", "result": res}
+
+
 def execute_tool(tool_name, *args):
     """Safely execute a registered Sentinel agent tool."""
 
@@ -10314,6 +10355,11 @@ def route_user_request(user_request):
 
     if request_lower in ["history", "decisions", "recent"]:
         return execute_tool("get_decision_history")
+
+    if request_lower == "risk":
+        return risk_calc_cmd("")
+    if request_lower.startswith("risk ") and len(request_lower) > 5:
+        return risk_calc_cmd(request_lower[5:].strip())
 
     if request_lower in ["market", "price"]:
         return execute_tool("get_market_snapshot")

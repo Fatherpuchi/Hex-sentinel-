@@ -119,3 +119,9 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 - Reading: null. No difference from chance larger than roughly 18 points is detectable at this n. It does not show the guard is right or wrong. Guard unchanged.
 - Rows 33 (RLC SELL, -1.53%, RIGHT) and 34 (AAVE SELL, +4.48%, WRONG) graded in that run.
 - Held-plan table at 36 rows after the same-day run; the 30-per-AI minimum is not met and no report was read.
+
+## Errata 56: levels_v1 text spec (no code) and facts_v1 content correction
+- levels_v1_spec.md added. Shadow only, own table shadow_levels in shadow.db (not created yet). Uses shadow_counterfactual rows, volatility unit U from 24h ranges, fixed multipliers 0.5/0.5/1.0/1.5, path grading with an AMBIGUOUS class. No code, tests or runs authorized yet.
+- Correction to an earlier chat statement: facts_v1 DOES include 1h EMA20/50/200 distances (d20, d50, d200), Bollinger %B (pctb, n=20, k=2) and ATR14 on 1h candles (atr_pct), confirmed by user grep of market_facts.py 2026-10-20. r24 and r168 come from range_pct; their exact meaning is inferred from the name, not seen.
+- Order of the build queue agreed in chat: levels_v1, risk calculator (display only), market_ctx_v1 (log only), orderbook_v1 code. One at a time, each with its own spec and go.
+- Push policy: local commits, one push per week.

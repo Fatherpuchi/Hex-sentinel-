@@ -130,3 +130,10 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 - levels_log.py added (selftest | check | run | report), written against the frozen levels_v1_spec.md. Selftest OK offline on synthetic candles (user paste 2026-10-20). Not run against shadow.db or Binance yet. It writes only shadow_levels in shadow.db, only on `run`.
 - Choices beyond the spec text: (1) AMBIGUOUS only when a stop and a NEW higher TP share a candle; a stop after TP1 already reached grades as TP1. (2) Failed requests (network error, 429, 5xx) are deferred, not logged, and retry next run; a 400 or no source logs UNAVAILABLE. (3) The AI-level comparison in the spec is not implemented in this version. (4) Candle source reuses market_facts.URLS and parse_klines. (5) Run limit 40 rows per run, 0.3 s pause between requests. (6) A row is graded only when the 24 post-call hourly candles are complete and gap-free.
 - Not tested: the real klines request with startTime (Spot and futures fallback), SHIB symbol mapping, and rows older than the Binance candle window. No result is read until 30 graded rows.
+
+## Errata 58: first levels_v1 run and read (observation only)
+- Confirmed by user paste 2026-10-20: levels_log.py run logged 40 rows (0 deferred, 1 over run limit, 1 not due), all status OK, 0 unavailable. The real klines request with startTime and the Spot/futures fallback worked on real data.
+- Report read at 40 graded: STOP 17 (42.5%), TP1 11 (27.5%), TP2 3 (7.5%), TP3 0, EXPIRED 9 (22.5%), AMBIGUOUS 0; mean R +0.039. Stop, TP1 and TP2 rows net 0 R by arithmetic from the counts; the mean comes from EXPIRED rows.
+- Reading: no difference from zero detectable at this n (one standard error about 0.17 R by estimate; same-day rows are correlated). Population is guard-held counterfactual calls, mostly SELL. Fees and slippage not modeled. Not a profit claim. Multipliers unchanged; any change needs levels_v2.
+- AI-level comparison still not implemented (needs the held-plan schema; separate small patch if wanted).
+- Daily routine now includes: python3 levels_log.py run | tail -n 3, after counterfactual_grade.py grade.

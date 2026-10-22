@@ -125,3 +125,8 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 - Correction to an earlier chat statement: facts_v1 DOES include 1h EMA20/50/200 distances (d20, d50, d200), Bollinger %B (pctb, n=20, k=2) and ATR14 on 1h candles (atr_pct), confirmed by user grep of market_facts.py 2026-10-20. r24 and r168 come from range_pct; their exact meaning is inferred from the name, not seen.
 - Order of the build queue agreed in chat: levels_v1, risk calculator (display only), market_ctx_v1 (log only), orderbook_v1 code. One at a time, each with its own spec and go.
 - Push policy: local commits, one push per week.
+
+## Errata 57: levels_log.py code for levels_v1 (not yet run)
+- levels_log.py added (selftest | check | run | report), written against the frozen levels_v1_spec.md. Selftest OK offline on synthetic candles (user paste 2026-10-20). Not run against shadow.db or Binance yet. It writes only shadow_levels in shadow.db, only on `run`.
+- Choices beyond the spec text: (1) AMBIGUOUS only when a stop and a NEW higher TP share a candle; a stop after TP1 already reached grades as TP1. (2) Failed requests (network error, 429, 5xx) are deferred, not logged, and retry next run; a 400 or no source logs UNAVAILABLE. (3) The AI-level comparison in the spec is not implemented in this version. (4) Candle source reuses market_facts.URLS and parse_klines. (5) Run limit 40 rows per run, 0.3 s pause between requests. (6) A row is graded only when the 24 post-call hourly candles are complete and gap-free.
+- Not tested: the real klines request with startTime (Spot and futures fallback), SHIB symbol mapping, and rows older than the Binance candle window. No result is read until 30 graded rows.

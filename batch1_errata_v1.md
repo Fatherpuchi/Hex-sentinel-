@@ -144,3 +144,10 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 - Confirmed live 2026-10-20 by user paste: `risk 1000 1 100 98` (long, size 5, notional 500, loss 10) and `risk 1000 5 100 102 0.05` (short, size 23.798191, notional 2379.82, loss 50, both warnings), both matching hand calculation.
 - Not tested: the usage line on bad input, a bare `risk`. Cosmetic: label spacing in the formatter ("Stop Distance Pct:2.000%"). The startup command list does not mention `history <term>` or `risk`; not patched.
 - Backup: sentinel_ai.py.bak_20261020_risk (not in git). Local commit only.
+
+## Errata 60: market_ctx_v1 text spec (no code)
+- market_ctx_v1_spec.md added. Shadow only, own tables shadow_market_ctx and shadow_market_breadth in shadow.db (not created yet). Standalone market_ctx_log.py once daily before sp. Breadth included; it needs no extra requests because the 40 per-coin requests supply it.
+- Registered: four direction rules (structure, UTC-day VWAP, taker ratio, relative strength vs BTC), report refuses below 30 graded rows per rule and below 20 distinct snapshot days. No code, tests or runs authorized yet.
+- Clarification vs the chat draft: snapshots with status OK or PARTIAL are gradable for a rule whose own feature is available (the draft said OK only).
+- Not verified: request weight of the klines call; taker-buy field on the official Spot docs page (confirmed on the futures page and third-party Spot wrappers); SHIB spot symbol.
+- Local commit only; weekly push.

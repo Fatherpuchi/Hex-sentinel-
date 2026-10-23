@@ -151,3 +151,9 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 - Clarification vs the chat draft: snapshots with status OK or PARTIAL are gradable for a rule whose own feature is available (the draft said OK only).
 - Not verified: request weight of the klines call; taker-buy field on the official Spot docs page (confirmed on the futures page and third-party Spot wrappers); SHIB spot symbol.
 - Local commit only; weekly push.
+
+## Errata 61: market_ctx_log.py code for market_ctx_v1 (selftest only)
+- market_ctx_log.py added (selftest | check | run | report), written against the frozen market_ctx_v1_spec.md (errata 60, local commit edd8ca0). `SELFTEST OK` confirmed by user paste 2026-10-20: offline, synthetic candles only. Not run against Binance or shadow.db yet.
+- Choices beyond the spec text: (1) forward returns are stored in a third insert-only table, shadow_market_ctx_fwd, to keep the log tables append-only. (2) A failed request logs UNAVAILABLE for that coin and day and is not retried the same day (fetch_klines hides the error type). (3) "Today" is the UTC day of the last closed candle. (4) Relative strength needs BTC's snapshot to end on the same candle, else n/a; BTC itself is exempt from the rs24/rs168 n/a rule. (5) Swing points need strictly higher/lower highs/lows than 2 blocks on each side, on gap-free UTC-aligned 4h blocks over 30 days. (6) Breadth uses status OK coins only and is written only when all 40 coins have a row that day. (7) "base" comparator = hit rate expected if calls were unrelated to outcomes, given the same call and up-move frequencies. (8) Rules S, V, T, R and their reading rule are as registered in errata 60.
+- Not tested: real klines requests (limit 1000, Spot then futures) and the raw taker-buy field on real data, SHIB, and the first breadth row. No result is read until 20 distinct days and 30 usable rows per rule.
+- Local commit only; weekly push.

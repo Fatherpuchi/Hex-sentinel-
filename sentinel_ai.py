@@ -732,7 +732,7 @@ def call_gemini_analysis(system_prompt, user_prompt):
                             pass
 
                         if error_body:
-                            print(f"   ↳ Gemini response: {error_body}")
+                            _hex_print_gemini_body(status_code, error_body)
 
                         if (
                             status_code == 429
@@ -826,7 +826,7 @@ def call_gemini_analysis(system_prompt, user_prompt):
 
             if attempt < max_attempts:
                 wait_seconds = 2 ** attempt
-                print(f"⚠️ GEMINI TRANSIENT FAILURE | {last_error}")
+                _hex_gemini_transient_notice(last_error)
                 print(f"🔄 Retrying in {wait_seconds}s...")
                 time.sleep(wait_seconds)
 
@@ -10251,6 +10251,77 @@ def risk_calc_cmd(argstr):
         "note": " ".join(notes),
     }
     return {"success": True, "tool": "risk_calc", "result": res}
+
+
+_HEX_FACT_DECK = []
+_HEX_FACTS = (
+    "Bitcoin's supply is capped at 21 million coins; the last one is expected around the year 2140.",
+    "The first Bitcoin block, the genesis block, was mined on 3 January 2009.",
+    "The Bitcoin whitepaper was published on 31 October 2008.",
+    "In May 2010 someone paid 10,000 BTC for two pizzas, the first widely cited real-world Bitcoin purchase.",
+    "A satoshi is one hundred-millionth of a bitcoin (0.00000001 BTC).",
+    "The Bitcoin block reward halves every 210,000 blocks, roughly every four years.",
+    "Ethereum moved from proof of work to proof of stake in September 2022, an upgrade called the Merge.",
+    "Dogecoin started in 2013 as a joke coin.",
+    "J. Welles Wilder introduced RSI and ATR in his 1978 book New Concepts in Technical Trading Systems; facts_v1 uses both.",
+    "Bollinger Bands were developed by John Bollinger in the 1980s.",
+    "The MACD indicator was created by Gerald Appel in the late 1970s.",
+    "One of the first public companies, the Dutch East India Company, issued shares in 1602.",
+    "On 6 May 2010 the Dow fell close to 1,000 points within minutes in the Flash Crash, then largely recovered.",
+    "William Sharpe, whose name is on the Sharpe ratio, shared the 1990 Nobel prize in economics.",
+    "The Kelly criterion for sizing bets was published by John L. Kelly Jr. at Bell Labs in 1956.",
+    "Goodhart's law: when a measure becomes a target, it stops being a good measure.",
+    "In World War II, Abraham Wald advised armouring the plane areas with no bullet holes: a lesson in survivorship bias.",
+    "Test 20 random strategies at the 5% level and on average one will look significant by pure chance.",
+    "A 50% hit rate over 100 trades has a standard error of about 5 points, so thin samples prove little.",
+    "Unix time counts seconds from 1 January 1970 UTC; Hex stores milliseconds.",
+    "UTC has no daylight saving time, which keeps daily candle boundaries stable.",
+    "Python is named after Monty Python, not the snake.",
+    "Git was created by Linus Torvalds in 2005.",
+    "SQLite, the database format Hex uses, is in the public domain.",
+    "SHA-256, the hash behind Bitcoin mining, always outputs 256 bits.",
+    "Hex Sentinel has never placed a live order: every call so far is paper.",
+    "Francis Galton described regression toward the mean in the 1880s.",
+    "Eugene Fama, who shared the 2013 Nobel prize, is best known for the efficient market hypothesis.",
+    "A candlestick shows open, high, low and close; Binance candles also carry taker buy volume.",
+    "Binance was founded in 2017.",
+    "Ethereum launched in 2015; Vitalik Buterin was 19 when he proposed it in 2013.",
+    "To halve the noise in a hit rate you need four times as many rows.",
+    "John von Neumann is quoted as saying that with four parameters he could fit an elephant: a warning about overfitting.",
+    "Tulip mania in 1630s Holland is famous, but historians debate how big it really was.",
+    "A 5% loss needs a 5.3% gain to break even; a 50% loss needs a 100% gain.",
+    "Five losses in a row of 5% each cut an account by about 22.6%.",
+)
+
+
+def _hex_next_fact():
+    """Return a wait-screen fact; no repeats until the whole list has been shown."""
+    import random
+    global _HEX_FACT_DECK
+    try:
+        if not _HEX_FACT_DECK:
+            _HEX_FACT_DECK = random.sample(_HEX_FACTS, len(_HEX_FACTS))
+        return _HEX_FACT_DECK.pop()
+    except Exception:
+        return ""
+
+
+def _hex_print_gemini_body(status_code, error_body):
+    """Print the Gemini error body, except a plain 503 overload message (display only)."""
+    if status_code == 503 and "high demand" in str(error_body).lower():
+        return
+    print(f"   ↳ Gemini response: {error_body}")
+
+
+def _hex_gemini_transient_notice(last_error):
+    """Retry notice; 503 overloads get one short line plus a fact (display only)."""
+    if "HTTP_503" in str(last_error):
+        print("⚠️ Gemini busy (503), this model is overloaded")
+        fact = _hex_next_fact()
+        if fact:
+            print("💡 " + fact)
+        return
+    print(f"⚠️ GEMINI TRANSIENT FAILURE | {last_error}")
 
 
 def execute_tool(tool_name, *args):

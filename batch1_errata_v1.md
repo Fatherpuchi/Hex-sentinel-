@@ -250,3 +250,8 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 - Field names confirmed by a read-only query (user paste): of 40 leads, 40 have a snippet (content), 40 have a score, 0 have a published date, 33 distinct domains. The date field is either not returned by basic search or named differently; not guessed.
 - Leads are untrusted web text and not evidence. No strategy has been selected or tested from them.
 - Local commit only; weekly push.
+
+## Errata 77: breakout19_v1 text spec (DRAFT, no code)
+- breakout19_v1_spec.md added as a DRAFT, not frozen; it freezes only on the operator's "freeze breakout19_v1". Shadow forward test of a rule designed in a Binance AI Pro chat (untrusted text): 24-bar 4H extreme with close beyond, 19h direction agreement, 19h true range at least 1.5x the prior 19h, 2.0% stop, exit at the stop or entry + 24 h, costs 0.05% + 0.02% per side. The operator's four answers and the definitions of S and M were not seen; S and M are not implemented. Unresolved interpretation points are listed in the spec.
+- Assistant checks of the pasted AI Pro numbers (arithmetic only; prices and the fee tier are unverified): BTC minimum size 0.001 at 78,134.90 is 78.13 USDT notional, so a 2% stop loses 1.5627 USDT, above the 1.50 cap (BTC untradeable at that price); ETH 0.032 at 2,301.58 is 73.65 USDT with a 2% stop loss of 1.473; costs 0.103 USDT round trip (6.9% of the budget); a full stop-out about 1.576 USDT. The same minimum-size limit will affect exec_v1.
+- No code, tests or runs authorized yet. Local commit only; weekly push.

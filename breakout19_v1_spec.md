@@ -1,9 +1,9 @@
 # breakout19_v1 spec (shadow only, DRAFT, text only, no code)
 
-Status: DRAFT. NOT frozen. It freezes only when the operator says "freeze breakout19_v1" and a later commit records it. Errata 77.
+Status: FROZEN at the commit that contains this line (the git commit time is the freeze time). Any change needs breakout19_v2. Errata 77 (draft) and 78 (freeze).
 
 ## 1. Origin
-- The design came from a chat with Binance AI Pro (untrusted text), locked by the operator's four answers, which the assistant has not seen. This spec is the assistant's interpretation of the pasted summary. Where the summary is ambiguous the choice is stated below. S and M (computed and logged by the AI Pro design, gating nothing) are not defined for the assistant and are NOT implemented.
+- The design came from a chat with Binance AI Pro (untrusted text), locked by the operator's four answers, which the assistant has not seen. This spec is the assistant's interpretation of the pasted summary. Where the summary is ambiguous the choice is stated below. S and M (computed and logged by the AI Pro design, gating nothing) were defined by the operator at freeze as logged context only (section 11).
 - Shadow only. No orders, no AI calls, nothing reads the results (not the guard, prompts, decisions or execution). It tests the RULE, not Binance AI Pro's execution. Live stays BLOCKED.
 
 ## 2. Data
@@ -40,4 +40,11 @@ Status: DRAFT. NOT frozen. It freezes only when the operator says "freeze breako
 - No orders, no AI use. Results never change a prompt, the guard, a plan or any decision. Using the rule anywhere needs its own frozen spec and forward evidence.
 
 ## 10. Known limits
-- The interpretation of an unseen design; S and M missing. Entry at the 4H close and the 0.05% and 0.02% costs are optimistic or unverified. Hourly candles for stops and 1h sampling of the 19h windows. Signals cluster across coins and days. Min-size and portfolio constraints not modelled. A null means no effect larger than the detectable size. Not a profit claim.
+- The interpretation of an unseen design; S and M are the assistant reading of two one-line operator answers. Entry at the 4H close and the 0.05% and 0.02% costs are optimistic or unverified. Hourly candles for stops and 1h sampling of the 19h windows. Signals cluster across coins and days. Min-size and portfolio constraints not modelled. A null means no effect larger than the detectable size. Not a profit claim.
+
+## 11. Operator answers at freeze (S and M) and their interpretation
+- Operator answers (chat): "S -> 4-hour chart. A -> present chart, using the 24-bar 4H extreme. M -> 4-month chart. Option 3 freeze". The earlier questions on the exact reading (24 bars before the signal bar, M19 as a close-to-close change, TR19 as sums) were not answered one by one; the freeze is taken as acceptance of the readings in sections 3 and 4.
+- A is the signal chart (4H bars, the 24-bar extreme, section 3). S and M are context fields only: they gate nothing, never enter the signal, stop or exit, and are not part of the evaluation in section 8. They are stored for later analysis, which would need its own pre-registered spec.
+- S (the 4H chart): s_pos = (close(k) - LL) / (HH - LL), using the same 24-bar range as the signal; it can fall below 0 or above 1 at a breakout. n/a if HH = LL.
+- M (the 4-month chart, read as 120 daily candles): m_pos = (close(k) - L120) / (H120 - L120), where H120 and L120 are the highest high and lowest low of the 120 completed UTC daily candles before the signal's UTC day. It costs one extra public klines request per coin (interval 1d, limit 130). n/a if fewer than 120 complete daily candles.
+- Storage: shadow_breakout19 gets two extra columns, s_pos and m_pos (both may be empty).

@@ -59,6 +59,11 @@ if [ -f breakout19_log.py ]; then
   else echo "FAIL: breakout19_log selftest"; FAILS="$FAILS breakout19_selftest"; fi
 fi
 
+if [ -f stocksig_log.py ]; then
+  if python3 stocksig_log.py selftest >/dev/null 2>&1; then step stocksig_log 4 stocksig_log.py run
+  else echo "FAIL: stocksig_log selftest"; FAILS="$FAILS stocksig_selftest"; fi
+fi
+
 B=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 U=$(git rev-list --count "origin/$B..HEAD" 2>/dev/null)
 echo "== summary: failed:${FAILS:- none} | unpushed local commits: ${U:-?}"

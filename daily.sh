@@ -64,6 +64,11 @@ if [ -f stocksig_log.py ]; then
   else echo "FAIL: stocksig_log selftest"; FAILS="$FAILS stocksig_selftest"; fi
 fi
 
+if [ -f sigaudit_log.py ]; then
+  if python3 sigaudit_log.py selftest >/dev/null 2>&1; then step sigaudit_log 4 sigaudit_log.py run
+  else echo "FAIL: sigaudit_log selftest"; FAILS="$FAILS sigaudit_selftest"; fi
+fi
+
 B=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 U=$(git rev-list --count "origin/$B..HEAD" 2>/dev/null)
 echo "== summary: failed:${FAILS:- none} | unpushed local commits: ${U:-?}"

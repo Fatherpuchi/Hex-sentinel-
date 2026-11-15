@@ -6735,7 +6735,7 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
         gemini_assessment = call_ai_provider(
             "gemini",
             system_prompt,
-            user_prompt,
+            user_prompt + _GEMINI_SKEPTIC_NOTE,
         )
     except Exception as e:
         print(f"❌ Gemini analysis provider error: {e}")
@@ -6770,6 +6770,31 @@ def run_legacy_pipeline(symbol="BTCUSDT"):
 
     if multi_ai_consensus["status"] == "INVALID":
         print("🛑 FAIL-CLOSED: One or more AI assessments are invalid.")
+
+    # ============================================================
+    # ROLES (roles_v1) - advisory only: no vote, no gate input
+    # ============================================================
+
+    try:
+        import hex_roles as _hex_roles
+
+        _roles_ctx = {
+            "symbol": symbol,
+            "signal": str(signal).upper(),
+            "report": locals().get("sentinel_output") or "",
+            "groq": groq_assessment,
+            "gemini": gemini_assessment,
+            "web": locals().get("web_intelligence"),
+            "price": None,
+        }
+        try:
+            import market_facts as _mf_roles
+            _roles_ctx["price"] = _mf_roles.parse_report(_roles_ctx["report"])[1]
+        except Exception:
+            pass
+        print("\n" + "\n".join(_hex_roles.run_roles_safe(_roles_ctx)))
+    except Exception as _roles_error:
+        print("ADVISORY ROLES: unavailable (" + type(_roles_error).__name__ + ")")
 
     # Run deterministic Stage 2.2 risk gate
     stage2_action, risk_status, risk_reason = stage2_risk_gate(
@@ -10322,6 +10347,15 @@ def _hex_gemini_transient_notice(last_error):
             print("💡 " + fact)
         return
     print(f"⚠️ GEMINI TRANSIENT FAILURE | {last_error}")
+
+
+_GEMINI_SKEPTIC_NOTE = (
+    "\n\n    ROLE NOTE (skeptic lens): before choosing ASSESSMENT, weigh the strongest "
+    "reasons the deterministic signal could be wrong. If those reasons outweigh the case "
+    "for it, choose CAUTIOUS or NEUTRAL. Name the single strongest risk in REASON. "
+    "DIRECTION must still agree with the actionable paper signal. Keep the exact output "
+    "format from the system prompt; do not add fields or extra text.\n"
+)
 
 
 def execute_tool(tool_name, *args):

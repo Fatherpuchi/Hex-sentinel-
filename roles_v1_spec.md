@@ -1,6 +1,6 @@
 # roles_v1 spec - four-AI role design (DRAFT, text only, no code)
 
-Status: DRAFT. NOT frozen. It freezes only when the operator says "freeze roles_v1" and a later commit records it. Errata 86.
+Status: FROZEN at the commit that contains this line (the git commit time is the freeze time). Any change needs roles_v2. Errata 86 (draft) and 87 (freeze).
 
 ## 1. Decision record
 - Operator decisions (chat): add ChatGPT (OpenAI API) as a third AI with role 1 (evidence classifier) and role 2 (plan critic), in the live run and not shadow-only; make Groq and Gemini differ slightly; give OpenRouter a role. The assistant advised shadow first (a role that is never graded cannot be trusted) and recorded it; the operator's decision stands. "Live" means: runs in the real analysis flow, printed in the output and stored. It does NOT mean a vote.
@@ -19,7 +19,7 @@ Status: DRAFT. NOT frozen. It freezes only when the operator says "freeze roles_
 - Outputs appear under the existing run output as an ADVISORY ROLES block and are stored with prompt hash, model, tokens, latency and error in a new shadow_roles table in shadow.db. A module hex_roles.py is called after the AI answers; any failure or timeout is swallowed and never changes the run; per-run limit 30 seconds.
 
 ## 5. Budgets (hard caps in code, kept in roles_state.json)
-- ChatGPT: at most 2 requests per analysis, 100 per UTC day, 700 output tokens per request and a daily token cap; stops for the day at the cap. The model name comes from a config file chosen from OpenAI's current docs (avoid a snapshot with a published shutdown date). A spend limit is also set in the OpenAI dashboard. Estimated cost about 3 USD per month at 45 analyses a day (the assistant's arithmetic; reasoning tokens can multiply it).
+- ChatGPT: at most 2 requests per analysis, 100 per UTC day, 1500 output tokens per request (hidden reasoning tokens count toward it) and a daily token cap; stops for the day at the cap. The model name comes from a config file chosen from OpenAI's current docs (avoid a snapshot with a published shutdown date). A spend limit is also set in the OpenAI dashboard. Estimated cost about 3 USD per month at 45 analyses a day (the assistant's arithmetic; reasoning tokens can multiply it).
 - OpenRouter: 20 labeling calls per day. Free-model limits found in docs: 20 requests per minute and 50 per day (1000 after 10 USD lifetime purchases), account-wide.
 
 ## 6. Evaluation (registered before any data)
@@ -30,3 +30,9 @@ Status: DRAFT. NOT frozen. It freezes only when the operator says "freeze roles_
 
 ## 8. Known limits
 - The evidence for role and model diversity comes from math, QA and groundedness benchmarks, not trading; results are mixed and role prompts alone often keep correlated errors. Groq's model (gpt-oss) is released by OpenAI, so ChatGPT adds less independence than a different vendor would. All AIs share the same evidence pool. The skeptic lens may lower agreement and increase holds. Free OpenRouter models rotate and are rate-limited at peak. Not a profit claim.
+
+## 9. Implementation notes at freeze (errata 87)
+- Code: hex_roles.py (module, selftest, check, livecheck, report); roles_config.json (optional) holds model names, lower caps and per-role switches; URLs are accepted only on api.openai.com and openrouter.ai; caps in the config can only be lowered. roles_state.json holds the daily counters and the error breaker (3 errors in a row switch the OpenAI roles off until the next UTC day).
+- Role 2 also runs deterministic rule checks in code (stop on the wrong side, TPs out of order, TP1 inside the entry zone, direction differing from the engine signal, entry zone more than 1 percent from the report price) and displays them even when no key is present; the model only adds contradictions, a stop-versus-range remark and the verdict. Plans reach the model in a random A/B order without provider names.
+- OpenRouter samples the items whose title hash mod 5 is 0, at most 20 items per day, one attempt per analysis, 20 seconds. OpenAI request parameters: max_completion_tokens, response_format json_object, reasoning_effort low; no temperature.
+- Not in this file: grading against price outcomes (a later tracker on webdir_v1 units) and the hooks into sentinel_ai.py (the Gemini skeptic paragraph and the call to run_roles_safe), which are separate anchored patches.

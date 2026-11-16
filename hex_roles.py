@@ -23,15 +23,18 @@ CONFIG_PATH = os.path.join(HERE, "roles_config.json")
 STATE_PATH = os.path.join(HERE, "roles_state.json")
 MIN_N = 30
 HARD = {"openai_requests_per_day": 100, "openai_tokens_per_day": 150000, "max_output_tokens": 2000,
-        "or_items_per_day": 20, "items_per_analysis": 10, "run_seconds": 30, "per_analysis": 2, "breaker": 3}
+        "or_items_per_day": 20, "items_per_analysis": 10, "run_seconds": 30, "per_analysis": 2, "breaker": 3,
+        "or_total_per_day": 45}
 DEFAULT = {"openai_model": "gpt-5-mini", "openai_url": "https://api.openai.com/v1/chat/completions",
            "openrouter_model": "poolside/laguna-s-2.1:free",
            "openrouter_url": "https://openrouter.ai/api/v1/chat/completions", "reasoning_effort": "low",
+           "roles_provider": "openrouter", "roles_model": "openai/gpt-oss-120b:free", "roles_reasoning": "low",
            "enabled": {"classifier": True, "critic": True, "or_labeler": True},
-           "openai_requests_per_day": 100, "openai_tokens_per_day": 120000, "max_output_tokens": 1500,
+           "openai_requests_per_day": 36, "openai_tokens_per_day": 120000, "max_output_tokens": 1500,
+           "or_total_per_day": 38,
            "or_items_per_day": 20, "items_per_analysis": 10, "run_seconds": 30}
 NUM_KEYS = ("openai_requests_per_day", "openai_tokens_per_day", "max_output_tokens", "or_items_per_day",
-            "items_per_analysis", "run_seconds")
+            "items_per_analysis", "run_seconds", "or_total_per_day")
 EFFORTS = ("", "minimal", "low", "medium", "high")
 FRESH = {"day": None, "openai_requests": 0, "openai_tokens": 0, "or_requests": 0, "or_items": 0,
          "errors": 0, "off_day": None}
@@ -114,6 +117,18 @@ def load_config(path=CONFIG_PATH):
             if raw["reasoning_effort"] not in EFFORTS:
                 raise ValueError("reasoning_effort")
             cfg["reasoning_effort"] = raw["reasoning_effort"]
+        if "roles_provider" in raw:
+            if raw["roles_provider"] not in ("openrouter", "openai"):
+                raise ValueError("roles_provider")
+            cfg["roles_provider"] = raw["roles_provider"]
+        if "roles_model" in raw:
+            if not isinstance(raw["roles_model"], str) or not raw["roles_model"].strip():
+                raise ValueError("roles_model")
+            cfg["roles_model"] = raw["roles_model"].strip()
+        if "roles_reasoning" in raw:
+            if raw["roles_reasoning"] not in EFFORTS:
+                raise ValueError("roles_reasoning")
+            cfg["roles_reasoning"] = raw["roles_reasoning"]
         if "enabled" in raw:
             if not isinstance(raw["enabled"], dict):
                 raise ValueError("enabled")
@@ -393,6 +408,24 @@ def openrouter_body(cfg, system, user):
             "max_tokens": 500}
 
 
+def roles_target(cfg, keys):
+    """-> (provider, url, model, key) for roles 1 and 2."""
+    if cfg.get("roles_provider") == "openrouter":
+        return "openrouter", cfg["openrouter_url"], cfg["roles_model"], keys.get("openrouter")
+    return "openai", cfg["openai_url"], cfg["openai_model"], keys.get("openai")
+
+
+def roles_body(cfg, system, user, max_out):
+    if cfg.get("roles_provider") == "openrouter":
+        b = {"model": cfg["roles_model"],
+             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+             "max_tokens": max_out}
+        if cfg.get("roles_reasoning"):
+            b["reasoning"] = {"effort": cfg["roles_reasoning"]}
+        return b
+    return openai_body(cfg, system, user, max_out)
+
+
 SCHEMA = [
     "create table if not exists shadow_roles(id integer primary key autoincrement, created_utc text, symbol text, "
     "role text, provider text, model text, prompt_hash text, status text, reason text, http_status integer, "
@@ -445,7 +478,7 @@ class Deadline:
 
 def gate_openai(cfg, st, key, today, used, remaining):
     if not key:
-        return "no OpenAI key"
+        return "no OpenRouter key" if cfg.get("roles_provider") == "openrouter" else "no OpenAI key"
     if st.get("off_day") == today:
         return "OpenAI roles off for today (error breaker)"
     if used >= HARD["per_analysis"]:
@@ -454,6 +487,8 @@ def gate_openai(cfg, st, key, today, used, remaining):
         return "daily request cap reached"
     if st["openai_tokens"] >= cfg["openai_tokens_per_day"]:
         return "daily token cap reached"
+    if cfg.get("roles_provider") == "openrouter" and st["openai_requests"] + st["or_requests"] >= cfg["or_total_per_day"]:
+        return "OpenRouter daily budget reached (shared with the fallback)"
     if remaining < 5:
         return "run time limit"
     return ""
@@ -473,17 +508,18 @@ def after_openai(st, res, today, state_path):
 
 
 def run_openai(role, system, user, cfg, keys, st, today, state_path, con, now, symbol, used, dl, post, order=""):
-    why = gate_openai(cfg, st, keys.get("openai"), today, used, dl.remaining())
+    prov, url, model, key = roles_target(cfg, keys)
+    why = gate_openai(cfg, st, key, today, used, dl.remaining())
     if why:
         return None, None, why, False
     phash = hashlib.sha1((system + "\n" + user).encode("utf-8")).hexdigest()[:12]
-    res = chat_call(post, cfg["openai_url"], keys["openai"],
-                    openai_body(cfg, system, user, cfg["max_output_tokens"]), max(5, min(25, int(dl.remaining()))))
+    res = chat_call(post, url, key,
+                    roles_body(cfg, system, user, cfg["max_output_tokens"]), max(5, min(25, int(dl.remaining()))))
     after_openai(st, res, today, state_path)
     parsed = parse_json(res["text"]) if res["ok"] else None
     status = "OK" if parsed is not None else "ERROR"
     reason = "" if parsed is not None else (res["error"] or "reply was not a JSON object")
-    cid = store_call(con, now, symbol, role, "openai", cfg["openai_model"], phash, status, reason, res, parsed, order)
+    cid = store_call(con, now, symbol, role, prov, model, phash, status, reason, res, parsed, order)
     return parsed, cid, reason, True
 # --- end part 3 ---
 
@@ -491,6 +527,7 @@ def run_openai(role, system, user, cfg, keys, st, today, state_path, con, now, s
 def run_roles(ctx, cfg, keys, st, state_path, con, post, now, rng, clock=time.time):
     lines = ["ADVISORY ROLES (no vote, not used by any gate)"]
     dl = Deadline(clock, cfg["run_seconds"])
+    who = "chatgpt" if cfg.get("roles_provider") != "openrouter" else (str(cfg["roles_model"]).split("/")[-1].split(":")[0] or "roles model")
     symbol = str(ctx.get("symbol") or "?")
     today = now.strftime("%Y-%m-%d")
     roll_state(st, today)
@@ -513,13 +550,15 @@ def run_roles(ctx, cfg, keys, st, state_path, con, post, now, rng, clock=time.ti
                         lines.append("  %d. %s | keyword %s | %s" % (
                             i, ("%s/%s/%s" % lab[:3]) if lab else "no label", it["kw"], it["title"][:60]))
                 else:
-                    lines.append("  evidence classifier (chatgpt): %s" % (why or "no result"))
+                    lines.append("  evidence classifier (%s): %s" % (who, why or "no result"))
             except Exception as e:
                 lines.append("  evidence classifier: error (%s)" % type(e).__name__)
     if cfg["enabled"]["or_labeler"] and keys.get("openrouter") and items:
         try:
             sample = [it for it in items if int(it["key"], 16) % 5 == 0]
             sample = sample[:max(0, cfg["or_items_per_day"] - st["or_items"])]
+            if cfg.get("roles_provider") == "openrouter" and st["openai_requests"] + st["or_requests"] >= cfg["or_total_per_day"]:
+                sample = []
             if sample and dl.remaining() >= 5:
                 user = classifier_user(symbol, sample)
                 res = chat_call(post, cfg["openrouter_url"], keys["openrouter"],
@@ -561,10 +600,10 @@ def run_roles(ctx, cfg, keys, st, state_path, con, post, now, rng, clock=time.ti
                     c = norm_critic(parsed)
                     con.execute("update shadow_roles set parsed=? where id=?", (json.dumps(dict(c, checks=checks)), cid))
                     con.commit()
-                    lines.append("  plan critic (chatgpt): %s | stop vs range: %s | contradictions: %s" % (
+                    lines.append("  plan critic (%s): %s | stop vs range: %s | contradictions: %s" % (who,
                         c["verdict"], c["stop_vs_range"] or "n/a", "; ".join(c["contradictions"]) or "none"))
                 else:
-                    lines.append("  plan critic (chatgpt): %s" % (why or "no result"))
+                    lines.append("  plan critic (%s): %s" % (who, why or "no result"))
         except Exception as e:
             lines.append("  plan critic: error (%s)" % type(e).__name__)
     return lines
@@ -660,7 +699,11 @@ def cmd_check():
     cfg, err = load_config()
     print("config: " + (err or "ok"))
     if cfg:
-        print("models: openai %s | openrouter %s | reasoning_effort %r" % (
+        print("roles provider %s | roles model %s | roles reasoning %r | labeler model %s" % (
+            cfg["roles_provider"], cfg["roles_model"], cfg["roles_reasoning"], cfg["openrouter_model"]))
+        print("budget: roles requests/day %d, openrouter total/day %d (free tier is 50/day, shared with the fallback)" % (
+            cfg["openai_requests_per_day"], cfg["or_total_per_day"]))
+        print("legacy openai path (dormant unless roles_provider is openai): openai model %s | openrouter model %s | reasoning_effort %r" % (
             cfg["openai_model"], cfg["openrouter_model"], cfg["reasoning_effort"]))
         print("enabled %s | caps: openai requests/day %d, tokens/day %d, max output %d, openrouter items/day %d, "
               "items/analysis %d, run seconds %d" % (cfg["enabled"], cfg["openai_requests_per_day"],
@@ -714,12 +757,13 @@ def cmd_livecheck(target):
         st["or_items"] += 1
         save_state(STATE_PATH, st)
     else:
-        why = gate_openai(cfg, st, keys["openai"], today, 0, 30)
+        prov, url, model, key = roles_target(cfg, keys)
+        why = gate_openai(cfg, st, key, today, 0, 30)
         if why:
             print("not run: " + why)
             return
-        res = chat_call(requests.post, cfg["openai_url"], keys["openai"],
-                        openai_body(cfg, CLASSIFIER_SYSTEM, user, cfg["max_output_tokens"]), 25)
+        res = chat_call(requests.post, url, key,
+                        roles_body(cfg, CLASSIFIER_SYSTEM, user, cfg["max_output_tokens"]), 25)
         after_openai(st, res, today, STATE_PATH)
     print("%s livecheck: ok=%s http=%s finish=%s tokens in/out %s/%s time %.1fs" % (
         target, res["ok"], res["status"], res["finish"] or "-", res["in"], res["out"], res["secs"]))
@@ -862,6 +906,7 @@ def selftest():
             return x
         return post
     cfg0, _ = load_config("/nonexistent")
+    cfg0["roles_provider"] = "openai"
     OU = cfg0["openai_url"]
     body = openai_body(cfg0, "SYS", "USER json", 1500)
     assert body == {"model": "gpt-5-mini", "messages": [{"role": "system", "content": "SYS"},
@@ -1011,6 +1056,47 @@ def selftest():
         g["load_config"] = real
     assert g["load_config"] is real
 
+    # 7b the OpenRouter roles provider (the default): URL, key, body, shared budget
+    cfgR = dict(cfg0, roles_provider="openrouter")
+    c2, e2 = load_config("/nonexistent")
+    assert e2 is None and c2["roles_provider"] == "openrouter" and c2["roles_model"] == "openai/gpt-oss-120b:free"
+    assert c2["roles_reasoning"] == "low" and c2["openai_requests_per_day"] == 36 and c2["or_total_per_day"] == 38
+    with tempfile.TemporaryDirectory() as td2:
+        cp2 = os.path.join(td2, "c.json")
+        for bad in (json.dumps({"roles_provider": "other"}), json.dumps({"roles_model": ""}),
+                    json.dumps({"roles_reasoning": "extreme"})):
+            with open(cp2, "w") as f:
+                f.write(bad)
+            assert load_config(cp2) == (None, "roles_config.json unreadable or invalid"), bad
+        with open(cp2, "w") as f:
+            json.dump({"or_total_per_day": 999, "roles_provider": "openai", "roles_model": "m/x:free",
+                       "roles_reasoning": ""}, f)
+        c3, e3 = load_config(cp2)
+        assert e3 is None and c3["or_total_per_day"] == HARD["or_total_per_day"] and c3["roles_model"] == "m/x:free"
+        assert c3["roles_provider"] == "openai" and c3["roles_reasoning"] == ""
+    assert roles_target(cfgR, {"openai": "a", "openrouter": "b"})[0::3] == ("openrouter", "b")
+    assert roles_target(dict(cfg0), {"openai": "a", "openrouter": "b"})[0::3] == ("openai", "a")
+    assert roles_body(cfg0, "s", "u", 9) == openai_body(cfg0, "s", "u", 9)
+    scriptR = lambda n, u: Resp(200, okbody(json.dumps([gpt_lab, or_lab, crit][n - 1])))
+    lines, text, log, st, sp, con = go(cfgR, {"openai": None, "openrouter": ORK}, scriptR)
+    assert len(log) == 3 and all(x[0] == cfgR["openrouter_url"] for x in log), [x[0] for x in log]
+    assert all(x[1]["Authorization"] == "Bearer " + ORK for x in log)
+    b0, b1 = log[0][2], log[1][2]
+    assert b0["model"] == "openai/gpt-oss-120b:free" and b0["max_tokens"] == 1500, b0
+    assert b0["reasoning"] == {"effort": "low"} and "max_completion_tokens" not in b0 and "response_format" not in b0
+    assert b1["model"] == "poolside/laguna-s-2.1:free" and b1["max_tokens"] == 500, b1
+    rows = con.execute("select role, provider, model from shadow_roles order by id").fetchall()
+    assert rows == [("CLASSIFIER", "openrouter", "openai/gpt-oss-120b:free"),
+                    ("OR_LABELER", "openrouter", "poolside/laguna-s-2.1:free"),
+                    ("CRITIC", "openrouter", "openai/gpt-oss-120b:free")], rows
+    assert (st["openai_requests"], st["or_requests"], st["openai_tokens"]) == (2, 1, 36), st
+    assert "plan critic (gpt-oss-120b): MINOR_ISSUES" in text and "second labeler (openrouter): 2 item(s) labeled" in text
+    st0 = dict(FRESH, day="2026-11-12", openai_requests=20, or_requests=18)
+    lines, text, log, st, sp, con = go(cfgR, {"openai": None, "openrouter": ORK}, scriptR, st=st0)
+    assert len(log) == 0 and text.count("OpenRouter daily budget reached") == 2 and "rule checks (code)" in text, text
+    lines, text, log, st, sp, con = go(cfgR, {"openai": KEY, "openrouter": None}, scriptR)
+    assert len(log) == 0 and "no OpenRouter key" in text, text
+
     # 8 report on crafted tables (hand-computed expectations)
     c = sqlite3.connect(":memory:")
     ensure_schema(c)
@@ -1053,7 +1139,7 @@ if __name__ == "__main__":
     elif cmd == "check":
         cmd_check()
     elif cmd == "livecheck":
-        cmd_livecheck(a[1] if len(a) > 1 else "openai")
+        cmd_livecheck(a[1] if len(a) > 1 else "roles")
     elif cmd == "report":
         cmd_report()
     else:

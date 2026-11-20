@@ -873,7 +873,7 @@ def call_openrouter_analysis(system_prompt, user_prompt):
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "poolside/laguna-s-2.1:free",
+                    "model": "google/gemma-4-31b-it:free",
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
@@ -980,7 +980,7 @@ def _wrap_provider_log(fn, provider, model):
 
 call_groq_analysis = _wrap_provider_log(call_groq_analysis, "groq", "openai/gpt-oss-120b")
 call_gemini_analysis = _wrap_provider_log(call_gemini_analysis, "gemini", "gemini-3.1-flash-lite")
-call_openrouter_analysis = _wrap_provider_log(call_openrouter_analysis, "openrouter", "poolside/laguna-s-2.1:free")
+call_openrouter_analysis = _wrap_provider_log(call_openrouter_analysis, "openrouter", "google/gemma-4-31b-it:free")
 
 
 def parse_multi_ai_assessment(ai_assessment):

@@ -1,31 +1,31 @@
 # HEX MANIFEST (generated facts, no secrets)
 
-Generated 2026-11-09 22:12 UTC by make_manifest.py. Regenerate weekly. HANDOFF.md holds the rules and the status.
+Generated 2026-11-20 17:09 UTC by make_manifest.py. Regenerate weekly. HANDOFF.md holds the rules and the status.
 
 ## 1. Environment
 - python 3.14.6 | Android aarch64
 - numpy 2.4.4 | requests 2.34.2 | python-dotenv 1.2.3
 
 ## 2. Git
-- branch wip/protect-YYYYMMDD | HEAD aeeb012 2026-11-09 21:53:30 +0000
-- commits 72 | unpushed 0
+- branch wip/protect-YYYYMMDD | HEAD 88e7de5 2026-11-16 14:57:25 +0000
+- commits 82 | unpushed 0
 - remote: git@github.com:Fatherpuchi/Hex-sentinel-.git
 - last 15 commits:
+  - 88e7de5 errata 89: roles_v2 (OpenAI removed, roles on OpenRouter gpt-oss)
+  - f8ace17 errata 88: roles_v1 live hooks (Gemini skeptic note, advisory block)
+  - 1d9c7d1 errata 87: hex_roles.py for roles_v1, roles_v1 FROZEN
+  - 7b6cc3d errata 86: roles_v1 draft (four-AI role design, no code)
+  - 33a3be6 errata 85: sigaudit_log.py for sigaudit_v1, daily.sh
+  - 6090157 errata 84: stocksig_log.py for stocksig_v1, daily.sh
+  - d486a12 errata 83: stocksig_v1 text spec (no code)
+  - 51c8577 errata 82: sigaudit_v1 text spec (no code)
+  - 17ed4d1 errata 81: first runs of noiseband, breakout19, first market_ctx and codeplan grading (observation only)
+  - 1aca7f1 errata 80: continuity package v1 (handoff, manifest, backup, restore)
   - aeeb012 errata 79: breakout19_log.py for breakout19_v1, daily.sh
   - 3d398ca errata 78: breakout19_v1 FROZEN, S and M as logged context
   - c064565 errata 77: breakout19_v1 text spec (DRAFT, no code)
   - 3bba078 errata 76: first research_v1 runs (observation only)
   - f208b71 errata 75: research_log.py for research_v1 (selftest only)
-  - 7783b3e errata 74: research_v1 text spec (no code)
-  - 684d118 errata 73: exec_v1 execution specification (DRAFT, no code)
-  - 7a784d0 errata 72: noiseband_log.py for noiseband_v1, daily.sh
-  - 82f82bf errata 71: Gemini 503 wait screen (display only)
-  - ecd9ded errata 70: noiseband_v1 text spec (no code)
-  - 807d8e9 errata 69: levelcmp_log.py for levelcmp_v1 (selftest only), daily.sh
-  - 3ba0d4b errata 68: levelcmp_v1 text spec (no code)
-  - ca8deb6 errata 67: first webdir_v1 read (observation only)
-  - e0e1f8f errata 66: webdir_log.py for webdir_v1 (selftest only), daily.sh
-  - 0fb4bd9 errata 65: webdir_v1 text spec (no code)
 
 ## 3. API inventory (names only; values are never written here)
 
@@ -33,7 +33,7 @@ Variables in .env (and the code files that mention each name):
 - GROQ_API_KEY: set | sentinel_ai.py, sentinel_ai_backup_20260910_214308.py, sentinel_ai_duplicate_cleanup_backup_20260910_222625.py, sentinel_ai_final_audit_backup.py, sentinel_ai_market_backup_20260910_222414.py, sentinel_ai_market_backup_20260910_222438.py
 - GEMINI_API_KEY: set | sentinel_ai.py, sentinel_ai_backup_20260910_214308.py, sentinel_ai_duplicate_cleanup_backup_20260910_222625.py, sentinel_ai_market_backup_20260910_222414.py, sentinel_ai_market_backup_20260910_222438.py, sentinel_ai_startup_backup_20260910_214443.py
 - CEREBRAS_API_KEY: set | not referenced by name in any .py file
-- OPENROUTER_API_KEY: set | or_probe.py, sentinel_ai.py
+- OPENROUTER_API_KEY: set | hex_roles.py, or_probe.py, sentinel_ai.py
 - GEMINI_API_KEY_2: set | sentinel_ai.py
 - GEMINI_API_KEY_3: set | sentinel_ai.py
 - TAVILY_API_KEY: set | research_log.py
@@ -44,17 +44,19 @@ External hosts mentioned in code (host: files):
 - api.coinlore.net: evidence.py
 - api.example-host.com: make_manifest.py
 - api.groq.com: sentinel_ai.py, sentinel_ai_backup_20260910_214308.py, sentinel_ai_duplicate_cleanup_backup_20260910_222625.py, sentinel_ai_final_audit_backup.py
+- api.openai.com: hex_roles.py
 - api.tavily.com: research_log.py
 - b.org: research_log.py
 - c.org: research_log.py
 - d.org: research_log.py
 - dev.kwayisi.org: stocks.py
 - e.org: research_log.py
+- evil.example.com: hex_roles.py
 - fapi.binance.com: carry_collector.py, carry_inventory.py, carry_klines_inventory.py, counterfactual_grade.py
 - generativelanguage.googleapis.com: sentinel_ai.py, sentinel_ai_backup_20260910_214308.py, sentinel_ai_duplicate_cleanup_backup_20260910_222625.py, sentinel_ai_market_backup_20260910_222414.py
 - hidden-host.com: make_manifest.py
 - news.google.com: sentinel_ai.py, sentinel_ai_backup_20260910_214308.py, sentinel_ai_duplicate_cleanup_backup_20260910_222625.py, sentinel_ai_market_backup_20260910_222414.py
-- openrouter.ai: or_probe.py, sentinel_ai.py
+- openrouter.ai: hex_roles.py, or_probe.py, sentinel_ai.py
 - www.a.com: research_log.py
 - www.example.com: research_log.py
 - www.w3.org: hex_chart.py, lab_play.py
@@ -62,9 +64,12 @@ External hosts mentioned in code (host: files):
 ## 4. Tracked files (path | bytes | sha256[:16]); FROZEN = never edit by hand
 - .gitignore | 1285 | ca601117df71f16c
 - CLAUDE_HEX_SENTINEL_AUDIT.md | 18649 | ee479c476ea09a3a
+- HANDOFF.md | 6496 | a35a890ab0b8adab
+- HEX_MANIFEST.md | 40055 | a5aec10798f056f8
 - LOCK_STALE_SECONDS | 0 | e3b0c44298fc1c14
 - analyze_market_regimes.py | 11293 | 474bd06e6418fd66
 - backtest_engine.py | 4451 | 759f9164f6bbec40
+- backup_hex.sh | 929 | b25b1eb23988fc96
 - batch1_calib.py | 12048 | 6c7248c7802fa0a7
 - batch1_calib_checkpoint_v2.json | 870 | 3b1eeb328f0e5fe4
 - batch1_calib_checkpoint_v3.json | 4888 | 1139cc656597c42d
@@ -74,7 +79,7 @@ External hosts mentioned in code (host: files):
 - batch1_calib_spec_v2.json | 8607 | 694075b69e2f004c FROZEN
 - batch1_calib_spec_v3.json | 9132 | 9db7876d2dd17ec3 FROZEN
 - batch1_engine.py | 8202 | 7bbd78e2e9899ac7 FROZEN
-- batch1_errata_v1.md | 69311 | fc63312efd02513c
+- batch1_errata_v1.md | 89639 | d235453ab329c308
 - batch1_log_e006.py | 5102 | cf1534d51ed4eeb1
 - batch1_log_e007.py | 4633 | ddb5e702dd0e8162
 - batch1_real.py | 7113 | 7b8b7cd67064a025
@@ -92,7 +97,7 @@ External hosts mentioned in code (host: files):
 - carry_collector.py | 8321 | 1e943620ddacb979
 - carry_coverage_detail.py | 3931 | 8b51ea6bd9cde371
 - carry_forward_coins.json | 630 | 12314927ff4409e5
-- carry_forward_log.jsonl | 6005 | e1bc934fb2f83bce
+- carry_forward_log.jsonl | 7227 | fedf8da5e90c884e
 - carry_forward_obs.py | 13659 | 1e7cb8200d928d99
 - carry_forward_spec_v1.json | 6760 | 9f3dd0bf8a1fca0a FROZEN
 - carry_inventory.py | 5430 | 6abd2d327e6cb007
@@ -112,7 +117,7 @@ External hosts mentioned in code (host: files):
 - codeplan_v1_spec.md | 3932 | bb0c2f59af191df4 FROZEN
 - composite_rating.py | 4390 | d7211e3693ef6c02
 - counterfactual_grade.py | 4932 | 61e0490c92cf268c
-- daily.sh | 2903 | 4288dfb96c0df90a
+- daily.sh | 3335 | 62cd63f888e23744
 - diagnose_tp1.py | 3671 | dc3c7ffaa8a85f20
 - evaluate_core_performance.py | 13226 | 8b8dce9c61722a8f
 - evaluate_prediction_accuracy.py | 13830 | 25cc5481c65b39b6
@@ -142,6 +147,7 @@ External hosts mentioned in code (host: files):
 - hex_colors.py | 2371 | 0f357e12a9574173
 - hex_economics.py | 6424 | 093b39cd2156eb61
 - hex_replay.py | 2311 | 76265e23381f0b2c
+- hex_roles.py | 57985 | 60682b55a7065fc6
 - hex_selftrade.py | 6736 | e79cf8d5f387b36d
 - hex_sentinel_core.py | 21546 | 6619bb8d49c8d8ff
 - historical_backtest.py | 17557 | 767e3cdac4b0c63d
@@ -156,6 +162,7 @@ External hosts mentioned in code (host: files):
 - levelcmp_v1_spec.md | 4473 | c0836b37819d7a8e FROZEN
 - levels_log.py | 13049 | 7376b168a2580974
 - levels_v1_spec.md | 3534 | 4f17a452e6e4ff66 FROZEN
+- make_manifest.py | 12652 | c972d0c83d26e4c6
 - market_ctx_log.py | 23334 | 236a73e8cde516ad
 - market_ctx_v1_spec.md | 4884 | ca048489410fd143 FROZEN
 - market_facts.py | 13905 | 72e4eb6fa34825d6
@@ -168,18 +175,26 @@ External hosts mentioned in code (host: files):
 - portfolio_walk_forward_validation.py | 21078 | 5c2b403924335b11
 - pred_report.py | 4611 | b99cd0e7eb7d956e
 - process_historical_data.py | 5224 | d77e02dcdf160b84
+- push_guarded.sh | 844 | b0e0757bda2e5880
 - rating_backtest.py | 2299 | 7ce274dbe6161e7f
 - rating_compare.py | 2356 | de46f2dd4c39c170
 - rating_report.py | 6154 | a9e5a8c61cbbea40
 - rating_strong.py | 1824 | 14871ec63ed04d19
 - research_log.py | 20162 | 90a101596c97d007
 - research_v1_spec.md | 4366 | 3583b3a95b734089 FROZEN
-- sentinel_ai.py | 420879 | e32d089aedfae3af
+- restore_hex.sh | 832 | 7ebc04c089cdaafa
+- roles_v1_spec.md | 6417 | 7395ad378cd21fe3 FROZEN
+- roles_v2_spec.md | 2663 | 0eccd2d734171899 FROZEN
+- sentinel_ai.py | 422306 | 1ad28af28b22600f
 - sentinel_stage1.py | 25744 | c71577fc4d4ef081
 - sentinel_theme.py | 9683 | 43239be4304b9c88
 - shadow_log.py | 4508 | bc2f67ddb565bf2b
+- sigaudit_log.py | 25376 | 71694ce189696259
+- sigaudit_v1_spec.md | 4770 | 7daa70ea4cd5c647 FROZEN
 - signal_intelligence_engine.py | 4 | a00c3b59d5e9e2d8
 - stocks.py | 15661 | 4c06cc214da83ab2
+- stocksig_log.py | 27949 | 8427cc0470dc013b
+- stocksig_v1_spec.md | 4613 | 63c01519dcaff2dc FROZEN
 - strategy_hook.json | 861 | 5cc297b026fbc63f
 - strategy_optimizer.py | 22177 | bbb40ad670217f69
 - tv_rating.py | 6813 | b1157262b4c9c3fc
@@ -190,10 +205,17 @@ External hosts mentioned in code (host: files):
 
 ## 5. Files present but NOT in git (names and sizes; contents are never listed)
 - .daily_state_2026-10-23 | 108 bytes
+- .daily_state_2026-11-10 | 174 bytes
+- .daily_state_2026-11-19 | 134 bytes
+- .daily_state_2026-11-20 | 200 bytes
 - .env | 519 bytes
-- HANDOFF.md | 6496 bytes
+- .sp_part1.txt | 3315 bytes
+- .sp_part2.txt | 4599 bytes
+- .sp_part3.txt | 5443 bytes
+- .sp_part4.txt | 5014 bytes
+- .sp_part5.txt | 5574 bytes
+- .sp_part6.txt | 4004 bytes
 - apply_harness_registration.py | 3055 bytes
-- backup_hex.sh | 929 bytes
 - band | 0 bytes
 - batch1_calib_draft.txt | 7081 bytes
 - batch1_calib_driver.py | 2056 bytes
@@ -213,7 +235,7 @@ External hosts mentioned in code (host: files):
 - carry_collector_run_20261013T064950Z.log | 1204 bytes
 - carry_draft_fwd.txt | 6906 bytes
 - carry_draft_hist.txt | 9079 bytes
-- carry_forward.db | 2985984 bytes
+- carry_forward.db | 9916416 bytes
 - carry_forward_obs_20261012T224347Z.log | 2495 bytes
 - carry_forward_obs_20261012T224538Z.log | 2495 bytes
 - carry_forward_obs_20261012T225826Z.logcd | 2495 bytes
@@ -232,7 +254,6 @@ External hosts mentioned in code (host: files):
 - hex_selftrade.log | 574 bytes
 - hi | 0 bytes
 - lab.db | 19431424 bytes
-- make_manifest.py | 12652 bytes
 - market_stats.db | 34222080 bytes
 - oneoff_integrate_from_result.py | 2835 bytes
 - oneoff_integrate_from_result_fix.py | 3299 bytes
@@ -243,14 +264,14 @@ External hosts mentioned in code (host: files):
 - prereg_ensemble.json | 513 bytes
 - prereg_pred_accuracy.json | 1249 bytes
 - prereg_profitability.json | 975 bytes
-- pw_progress.json | 254 bytes
+- pw_progress.json | 154 bytes
 - register_batch1_hypotheses.py | 2465 bytes
 - register_spec_versions.py | 764 bytes
 - research_state.json | 82 bytes
-- restore_hex.sh | 832 bytes
 - review_all.py | 1541 bytes
 - review_out.txt | 9055 bytes
-- sentinel.db | 5136384 bytes
+- roles_state.json | 136 bytes
+- sentinel.db | 5746688 bytes
 - sentinel_48h.db | 159744 bytes
 - sentinel_4h.db | 385024 bytes
 - sentinel_72h.db | 151552 bytes
@@ -289,17 +310,17 @@ External hosts mentioned in code (host: files):
 - sentinel_stage1_pandas_backup.py | 19261 bytes
 - sentinel_stage1_stage1_2_backup.py | 20327 bytes
 - sentinel_stage1_stage5_1_backup.py | 22076 bytes
-- shadow.db | 782336 bytes
-- sp_progress.json | 259 bytes
+- shadow.db | 1355776 bytes
+- sp_progress.json | 4756 bytes
 - stock_paper.db | 8192 bytes
 
 ## 6. Databases (read-only: tables, row counts, columns)
 
 ### carry_forward.db
-  - f (1517 rows): sym, t, rate, mark
-  - mk (11544 rows): sym, t, o, h, l, c
-  - pp (11544 rows): sym, t, o, h, l, c
-  - sp (11544 rows): sym, t, o, h, l, c
+  - f (4918 rows): sym, t, rate, mark
+  - mk (37323 rows): sym, t, o, h, l, c
+  - pp (37323 rows): sym, t, o, h, l, c
+  - sp (37323 rows): sym, t, o, h, l, c
 
 ### carry_klines.db
   - mk (1530541 rows): sym, t, o, h, l, c
@@ -336,20 +357,20 @@ External hosts mentioned in code (host: files):
   - futures_stats (144500 rows): metric, symbol, ts, a, b, c, raw
 
 ### sentinel.db
-  - agent_decisions (541 rows): id, timestamp, symbol, signal, strategy_status, risk_status, final_action, live_execution, ai_assessment, importance, entry_price, evaluation_price, price_change_pct, outcome, feedback_score, evaluated_at
-  - ai_consensus_audit (489 rows): id, timestamp, symbol, strategy_status, market_signal, groq_assessment, gemini_assessment, consensus_status, consensus_action, consensus_reason, final_action, risk_status, live_execution, decision_id
-  - ai_web_evidence_audit (958 rows): id, created_at, provider, symbol, evidence_present, evidence_item_count, evidence_context_hash, prompt_length, delivery_status, live_execution
-  - backtests (646 rows): id, strategy_name, version, symbol, interval, candles, starting_balance, ending_balance, total_return, win_rate, profit_factor, expectancy, max_drawdown, total_trades, fees_paid, slippage_cost, created_at
+  - agent_decisions (589 rows): id, timestamp, symbol, signal, strategy_status, risk_status, final_action, live_execution, ai_assessment, importance, entry_price, evaluation_price, price_change_pct, outcome, feedback_score, evaluated_at
+  - ai_consensus_audit (537 rows): id, timestamp, symbol, strategy_status, market_signal, groq_assessment, gemini_assessment, consensus_status, consensus_action, consensus_reason, final_action, risk_status, live_execution, decision_id
+  - ai_web_evidence_audit (1054 rows): id, created_at, provider, symbol, evidence_present, evidence_item_count, evidence_context_hash, prompt_length, delivery_status, live_execution
+  - backtests (694 rows): id, strategy_name, version, symbol, interval, candles, starting_balance, ending_balance, total_return, win_rate, profit_factor, expectancy, max_drawdown, total_trades, fees_paid, slippage_cost, created_at
   - final_decisions (1 rows): id, timestamp, symbol, signal, decision, score, reason, live_execution
-  - paper_signals (646 rows): id, strategy_name, version, symbol, signal, price, created_at, outcome
+  - paper_signals (694 rows): id, strategy_name, version, symbol, signal, price, created_at, outcome
   - paper_trade_learning_feedback (9 rows): id, paper_trade_id, decision_id, consensus_id, symbol, direction, outcome, feedback_label, decision_score, consensus_score, groq_direction, gemini_direction, groq_score, gemini_score, learning_status, created_at
   - paper_trade_plans (37 rows): id, created_at, expires_at, symbol, direction, entry_price, stop_loss, tp1, tp2, tp3, groq_plan, gemini_plan, consensus_status, status, outcome, exit_price, resolved_at, decision_id, consensus_id, tp1_hit_at, tp2_hit_at, tp3_hit_at, last_checked_at, last_price, price_change_pct, feedback_score, evaluated_at, trade_outcome, prediction_outcome, prediction_evaluated_at, econ_leverage, econ_margin, econ_qty, econ_fees, econ_funding, econ_net_pnl, econ_roi_pct, econ_liquidated, econ_liq_price, econ_stop_beyond_liq, econ_note
   - provider_performance_audit (4 rows): id, consensus_id, decision_id, symbol, provider, provider_direction, provider_result, outcome, created_at
-  - rating_log (249 rows): id, symbol, interval, hex_signal, rating, score, ma_score, osc_score, price, created_at
-  - strategies (646 rows): id, strategy_name, version, status, created_at, last_validation, notes
+  - rating_log (297 rows): id, symbol, interval, hex_signal, rating, score, ma_score, osc_score, price, created_at
+  - strategies (694 rows): id, strategy_name, version, status, created_at, last_validation, notes
   - strategy_versions (2 rows): id, strategy_name, version, status, created_at, updated_at, reason
-  - walk_forward_results (3210 rows): id, strategy_name, version, symbol, interval, fold, trades, total_return, profit_factor, max_drawdown, created_at
-  - web_intelligence_evidence (3480 rows): id, symbol, information_class, source, source_type, source_quality, title, summary, direction, confidence, importance, freshness, corroboration_count, published_at, retrieved_at, evidence_hash, publisher, source_domain, corroboration_strength, event_key, conflict_status
+  - walk_forward_results (3450 rows): id, strategy_name, version, symbol, interval, fold, trades, total_return, profit_factor, max_drawdown, created_at
+  - web_intelligence_evidence (3948 rows): id, symbol, information_class, source, source_type, source_quality, title, summary, direction, confidence, importance, freshness, corroboration_count, published_at, retrieved_at, evidence_hash, publisher, source_domain, corroboration_strength, event_key, conflict_status
 
 ### sentinel_48h.db
   - agent_decisions (3 rows): id, timestamp, symbol, signal, strategy_status, risk_status, final_action, live_execution, ai_assessment, importance, entry_price, evaluation_price, price_change_pct, outcome, feedback_score, evaluated_at
@@ -400,28 +421,35 @@ External hosts mentioned in code (host: files):
   - web_intelligence_evidence (12 rows): id, symbol, information_class, source, source_type, source_quality, title, summary, direction, confidence, importance, freshness, corroboration_count, published_at, retrieved_at, evidence_hash, publisher, source_domain, corroboration_strength, event_key, conflict_status
 
 ### shadow.db
-  - shadow_codeplan (40 rows): id, created_utc, ctx_id, day_utc, symbol, direction, call_s, call_v, call_t, call_r, n_up, n_down, entry, snap_ms, status
-  - shadow_codeplan_grade (0 rows): id, graded_utc, ctx_id, symbol, direction, entry, u_pct, stop, tp1, tp2, tp3, outcome, r_result, dir_ret_pct, candles_used, source, status, reason
-  - shadow_combined (142 rows): id, created_utc, symbol, final_action, direction, longs, shorts, matches, opposes, label, shadow_date, shadow_flag, price
-  - shadow_counterfactual (47 rows): id, created_utc, created_ms, hour_bucket, symbol, direction, dir_source, price, risk_status, due_ms, graded_utc, exit_price, exit_source, move_pct, was_right, baseline_rate, excluded, excl_reason
-  - shadow_held_plans (54 rows): id, audit_id, ai, created_utc, created_ms, hour_bucket, symbol, direction, entry_low, entry_high, stop_loss, tp1, tp2, tp3, source, graded_utc, entered, tp1_min, tp2_min, tp3_min, stop_min, outcome, note
-  - shadow_levelcmp (54 rows): id, created_utc, held_id, cf_id, levels_id, ai, symbol, direction, audit_ms, day_utc, ai_entry, ai_stop, ai_tp1, ai_tp2, ai_tp3, calc_entry, calc_stop, calc_tp1, calc_tp2, calc_tp3, ai_outcome, calc_outcome, ai_r, calc_r, ai_stop_pct, calc_stop_pct, stored_ai_outcome, consistent, candles_used, source, status, reason
-  - shadow_levels (44 rows): id, created_utc, cf_id, symbol, direction, entry, u_pct, stop, tp1, tp2, tp3, outcome, r_result, candles_used, source, status, reason
-  - shadow_market_breadth (1 rows): id, created_utc, day_utc, n_coins, n_ok, pos24_share, pos168_share, up_struct_share, median_r24
-  - shadow_market_ctx (40 rows): id, created_utc, day_utc, snap_ms, symbol, source, status, reason, last_open_ms, last_close, age_min, candles, numbers_json
-  - shadow_market_ctx_fwd (0 rows): id, ctx_id, graded_utc, fwd_pct
-  - shadow_market_facts (28 rows): id, created_utc, symbol, version, source, status, reason, last_open_ms, age_min, candles_used, deviation_pct, text, numbers_json
+  - shadow_breakout19 (45 rows): id, created_utc, symbol, signal_close_ms, signal_utc, day_utc, direction, status, reason, entry, stop, exit_ms, exit_px, exit_type, gross_pct, net_pct, r_net, mirror_net_pct, hh, ll, m19, tr19, prev19, s_pos, m_pos, source
+  - shadow_codeplan (150 rows): id, created_utc, ctx_id, day_utc, symbol, direction, call_s, call_v, call_t, call_r, n_up, n_down, entry, snap_ms, status
+  - shadow_codeplan_grade (49 rows): id, graded_utc, ctx_id, symbol, direction, entry, u_pct, stop, tp1, tp2, tp3, outcome, r_result, dir_ret_pct, candles_used, source, status, reason
+  - shadow_combined (183 rows): id, created_utc, symbol, final_action, direction, longs, shorts, matches, opposes, label, shadow_date, shadow_flag, price
+  - shadow_counterfactual (55 rows): id, created_utc, created_ms, hour_bucket, symbol, direction, dir_source, price, risk_status, due_ms, graded_utc, exit_price, exit_source, move_pct, was_right, baseline_rate, excluded, excl_reason
+  - shadow_held_plans (62 rows): id, audit_id, ai, created_utc, created_ms, hour_bucket, symbol, direction, entry_low, entry_high, stop_loss, tp1, tp2, tp3, source, graded_utc, entered, tp1_min, tp2_min, tp3_min, stop_min, outcome, note
+  - shadow_levelcmp (56 rows): id, created_utc, held_id, cf_id, levels_id, ai, symbol, direction, audit_ms, day_utc, ai_entry, ai_stop, ai_tp1, ai_tp2, ai_tp3, calc_entry, calc_stop, calc_tp1, calc_tp2, calc_tp3, ai_outcome, calc_outcome, ai_r, calc_r, ai_stop_pct, calc_stop_pct, stored_ai_outcome, consistent, candles_used, source, status, reason
+  - shadow_levels (45 rows): id, created_utc, cf_id, symbol, direction, entry, u_pct, stop, tp1, tp2, tp3, outcome, r_result, candles_used, source, status, reason
+  - shadow_market_breadth (4 rows): id, created_utc, day_utc, n_coins, n_ok, pos24_share, pos168_share, up_struct_share, median_r24
+  - shadow_market_ctx (160 rows): id, created_utc, day_utc, snap_ms, symbol, source, status, reason, last_open_ms, last_close, age_min, candles, numbers_json
+  - shadow_market_ctx_fwd (80 rows): id, ctx_id, graded_utc, fwd_pct
+  - shadow_market_facts (76 rows): id, created_utc, symbol, version, source, status, reason, last_open_ms, age_min, candles_used, deviation_pct, text, numbers_json
+  - shadow_noiseband (960 rows): id, created_utc, day_utc, symbol, status, reason, direction, entry_idx, exit_idx, entry_px, exit_px, gross_pct, net_pct, raw_pct, source
   - shadow_prompt_v2 (63 rows): id, created_utc, symbol, provider, model, http_status, finish_reason, latency_s, out_tokens, prompt_hash, price, final_action, v1_assessment, v1_direction, v2_assessment, v2_direction, v2_fields_json, v2_raw, error
-  - shadow_prompt_v2_1 (28 rows): id, created_utc, symbol, provider, model, http_status, finish_reason, latency_s, out_tokens, prompt_hash, price, final_action, v1_assessment, v1_direction, v2_assessment, v2_direction, v2_fields_json, v2_raw, error, facts_id, facts_status
-  - shadow_prompt_v2_1g (22 rows): id, created_utc, symbol, provider, model, key_label, http_status, finish_reason, latency_s, prompt_hash, price, final_action, v2_assessment, v2_direction, v2_fields_json, v2_raw, error, facts_id, skip_reason
-  - shadow_provider_calls (186 rows): id, created_utc, symbol, provider, model, ok, error, latency_s
-  - shadow_pw_runs (14 rows): id, created_utc, symbol, tag, why, signal, final_action, risk_status, price
+  - shadow_prompt_v2_1 (76 rows): id, created_utc, symbol, provider, model, http_status, finish_reason, latency_s, out_tokens, prompt_hash, price, final_action, v1_assessment, v1_direction, v2_assessment, v2_direction, v2_fields_json, v2_raw, error, facts_id, facts_status
+  - shadow_prompt_v2_1g (70 rows): id, created_utc, symbol, provider, model, key_label, http_status, finish_reason, latency_s, prompt_hash, price, final_action, v2_assessment, v2_direction, v2_fields_json, v2_raw, error, facts_id, skip_reason
+  - shadow_provider_calls (290 rows): id, created_utc, symbol, provider, model, ok, error, latency_s
+  - shadow_pw_runs (17 rows): id, created_utc, symbol, tag, why, signal, final_action, risk_status, price
   - shadow_research_leads (40 rows): id, run_utc, query_no, url, title, snippet, domain, published, provider_score, source_note
-  - shadow_runs (5 rows): applies_date, run_utc, lag_hours, flag, n_coins, engine_hash, notes
+  - shadow_roles (21 rows): id, created_utc, symbol, role, provider, model, prompt_hash, status, reason, http_status, finish_reason, in_tokens, out_tokens, latency_s, parsed, raw, plan_order
+  - shadow_roles_items (0 rows): id, created_utc, day_utc, symbol, call_id, item_key, title, kw_direction, source, direction, horizon, claim, reason
+  - shadow_runs (7 rows): applies_date, run_utc, lag_hours, flag, n_coins, engine_hash, notes
   - shadow_sentinel (37 rows): plan_id, symbol, direction, plan_created_at, captured_utc
-  - shadow_signals (800 rows): applies_date, strategy, symbol, weight
-  - shadow_webdir (1053 rows): id, created_utc, unit_key, kind, symbol, snap_ms, day_utc, call_dir, n_bull, n_bear, event_key, status
-  - shadow_webdir_grade (990 rows): id, graded_utc, unit_id, entry, fwd_pct, status, reason, source, candles_used
+  - shadow_sigaudit (60 rows): id, created_utc, audit_id, ts, symbol, day_utc, strategy_status, signal, grp, seen, entry, exit_px, return_pct, directional_pct, net_pct, source, status, reason
+  - shadow_signals (1120 rows): applies_date, strategy, symbol, weight
+  - shadow_stocksig (246 rows): id, created_utc, symbol, day_utc, t_ms, kind, age_days, vol24, entry, direction, e20, e50, rsi, thr_pct, market_open, source, status, reason
+  - shadow_stocksig_grade (0 rows): id, unit_id, graded_utc, exit_px, ret, result, gross_pct, net_pct, status, reason
+  - shadow_webdir (1099 rows): id, created_utc, unit_key, kind, symbol, snap_ms, day_utc, call_dir, n_bull, n_bear, event_key, status
+  - shadow_webdir_grade (1041 rows): id, graded_utc, unit_id, entry, fwd_pct, status, reason, source, candles_used
 
 ### stock_paper.db
   - preds (1 rows): id, sym, kind, created_ms, entry, direction, thr, end_ms, scored_ms, exit_px, ret, result
@@ -481,6 +509,16 @@ External hosts mentioned in code (host: files):
 - 77: breakout19_v1 text spec (DRAFT, no code)
 - 78: breakout19_v1 FROZEN (operator: "Option 3 freeze") with S and M as logged context
 - 79: breakout19_log.py code for breakout19_v1 (created by a block that gates on the selftest) and daily.sh
+- 80: continuity package v1 (HANDOFF.md, make_manifest.py, backup_hex.sh, restore_hex.sh)
+- 81: first runs of noiseband, breakout19 and first grading of market_ctx and codeplan (observation only)
+- 82: sigaudit_v1 text spec (no code); audit-table findings
+- 83: stocksig_v1 text spec (no code); stocks.py observations
+- 84: stocksig_log.py code for stocksig_v1 (assembled from six parts by a block that gates on the selftest) and dail
+- 85: sigaudit_log.py code for sigaudit_v1 (assembled from seven parts by a block that gates on the selftest) and da
+- 86: roles_v1 draft (four-AI role design, no code)
+- 87: hex_roles.py code for roles_v1 and roles_v1 FROZEN (assembled from nine parts by a block that gates on the sel
+- 88: roles_v1 live hooks in sentinel_ai.py (Gemini skeptic note and the advisory block)
+- 89: roles_v2 (OpenAI API removed; roles 1 and 2 run on OpenRouter gpt-oss-120b:free)
 
 ## 8. Daily routine (daily.sh)
 ```
@@ -543,6 +581,16 @@ fi
 if [ -f breakout19_log.py ]; then
   if python3 breakout19_log.py selftest >/dev/null 2>&1; then step breakout19_log 4 breakout19_log.py run
   else echo "FAIL: breakout19_log selftest"; FAILS="$FAILS breakout19_selftest"; fi
+fi
+
+if [ -f stocksig_log.py ]; then
+  if python3 stocksig_log.py selftest >/dev/null 2>&1; then step stocksig_log 4 stocksig_log.py run
+  else echo "FAIL: stocksig_log selftest"; FAILS="$FAILS stocksig_selftest"; fi
+fi
+
+if [ -f sigaudit_log.py ]; then
+  if python3 sigaudit_log.py selftest >/dev/null 2>&1; then step sigaudit_log 4 sigaudit_log.py run
+  else echo "FAIL: sigaudit_log selftest"; FAILS="$FAILS sigaudit_selftest"; fi
 fi
 
 B=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)

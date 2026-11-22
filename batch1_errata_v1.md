@@ -331,3 +331,7 @@ Recorded 2026-10-13. Spec approved as frozen, no change.
 
 ## Errata 90 (2026-11-20): OpenRouter fallback model replaced
 OpenRouter removed poolside/laguna-s-2.1:free (HTTP 404 "no longer available", shadow_roles ids 19-21 on 2026-11-20; absent from the public free list). It was the errata 37 fallback. Since an unknown date a Groq or Gemini failure may have had no working rescue (inference, not checked in the provider log). Fallback is now google/gemma-4-31b-it:free in sentinel_ai.py (2 lines: request body and provider-log label). hex_roles.py (roles, dropped) and its selftest are unchanged. Compare calls before and after this commit separately; the provider log (errata 44) records the model id.
+
+## Errata 91 (2026-11-22): gate_trace_v1 spec FROZEN (text only, no code)
+Spec file gate_trace_v1_spec.md, frozen at this commit time. Shadow log of which gate held each decision, plus ONE alternative cutoff (50 vs 60) tested forward on group M (agreed BUY/SELL, Stage 1 approved, score 50-59, first row per coin-day), graded at 24h against a same-day baseline, day-bootstrap one-sided p<0.05, read only at 30 graded rows and 20 days. No effect on any decision; guard cutoffs 60/80 and window 4 unchanged. Code: not written (needs a separate go).
+Follow-up to errata 90: fallback google/gemma-4-31b-it:free is UNTESTED. In the 11-20 probe gemma-4-31b and gemma-4-26b returned HTTP 429 and nemotron-3.5-lightning returned HTTP 200 with empty content under a 30-token cap. No model was seen giving a real answer. Left as it is.

@@ -335,3 +335,6 @@ OpenRouter removed poolside/laguna-s-2.1:free (HTTP 404 "no longer available", s
 ## Errata 91 (2026-11-22): gate_trace_v1 spec FROZEN (text only, no code)
 Spec file gate_trace_v1_spec.md, frozen at this commit time. Shadow log of which gate held each decision, plus ONE alternative cutoff (50 vs 60) tested forward on group M (agreed BUY/SELL, Stage 1 approved, score 50-59, first row per coin-day), graded at 24h against a same-day baseline, day-bootstrap one-sided p<0.05, read only at 30 graded rows and 20 days. No effect on any decision; guard cutoffs 60/80 and window 4 unchanged. Code: not written (needs a separate go).
 Follow-up to errata 90: fallback google/gemma-4-31b-it:free is UNTESTED. In the 11-20 probe gemma-4-31b and gemma-4-26b returned HTTP 429 and nemotron-3.5-lightning returned HTTP 200 with empty content under a 30-token cap. No model was seen giving a real answer. Left as it is.
+
+## Errata 92 (2026-11-22): HANDOFF.md refreshed
+HANDOFF.md replaced (old 11-09 text saved as .bak_handoff_e92, not in git) with the state confirmed on 2026-11-20 from user pastes. No code change. Roles recorded as dropped; fallback recorded as untested; gate_trace_v1 recorded as spec only. Next free errata number: 93.
